@@ -2,21 +2,23 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import json
+import time
 from typing import Optional
 
 from .config import load_config
-from .designer.text_art import create_text_design
-from .generator.idea_generator import generate_ideas
-from .trends.google_trends import fetch_trends
-from .publisher.printify_publisher import PrintifyPublisher
+from .agents.zeitgeist import ZeitgeistAgent
+from .agents.ceo import HeliosCEO
+from .agents.audience import AudienceAnalyst
+from .agents.product import ProductStrategist
+from .agents.creative import CreativeDirector
+from .agents.marketing import MarketingCopywriter
+from .agents.publisher_agent import PrintifyPublisherAgent
+from .utils_google import append_rows
 
 
 DEFAULT_BLUEPRINTS = {
-    # Heuristic defaults; adjust in .env if you have exact IDs
-    "tee": {
-        "blueprint_id": 482,  # Example placeholder; verify via Printify Catalog
-        "print_provider_id": 1,  # Printify's default in-network provider placeholder
-    }
+    "tee": {"blueprint_id": 482, "print_provider_id": 1}
 }
 
 
@@ -31,58 +33,138 @@ def run_end_to_end(
 ) -> None:
     cfg = load_config()
 
-    # Step 1: Trends
-    trends = fetch_trends(seed=seed, geo=geo, timeframe="now 7-d", top_n=10)
-
-    # Step 2: Ideas
-    ideas = generate_ideas(trends, num_ideas=num_ideas)
-    if not ideas:
-        raise RuntimeError("No ideas generated")
-    slogan = ideas[0]
-
-    # Step 3: Design
-    out_path = create_text_design(
-        text=slogan,
-        out_dir=cfg.output_dir,
-        fonts_dir=cfg.fonts_dir,
-    )
-
-    print(f"Created design: {out_path}")
-
-    if cfg.dry_run:
-        print("DRY_RUN enabled. Skipping Printify publish.")
+    # High-priority: Zeitgeist discovery
+    start_ts = time.time()
+    zeitgeist = ZeitgeistAgent().run(seed=seed)
+    decision = HeliosCEO().validate_trend(zeitgeist)
+    if not decision.approved:
+        result_obj = {
+            "execution_summary": {
+                "total_time_seconds": int(time.time() - start_ts),
+                "agents_used": 2,
+                "parallel_executions": 0,
+                "quality_scores": {
+                    "opportunity_score": decision.opportunity_score,
+                    "confidence_level": decision.confidence_level,
+                },
+            },
+            "trend_data": zeitgeist,
+            "audience_insights": None,
+            "product_portfolio": [],
+            "creative_concepts": [],
+            "marketing_materials": [],
+            "publication_queue": [],
+        }
+        print(json.dumps(result_obj, indent=2))
         return
 
-    # Step 4: Publish
+    # Parallel: Audience + Product strategy (sequential here, light-weight)
+    audience = AudienceAnalyst().run(zeitgeist)
+    product = ProductStrategist().run(audience)
+
+    # Batch creative
+    creative = CreativeDirector(output_dir=cfg.output_dir, fonts_dir=cfg.fonts_dir)
+    creative_batch = creative.run(zeitgeist, product.get("selected_products", []), num_designs_per_product=3)
+
+    # Batch marketing copy
+    marketing = MarketingCopywriter().run(creative_batch)
+
+    # Build base result object
+    result_obj = {
+        "execution_summary": {
+            "total_time_seconds": int(time.time() - start_ts),
+            "agents_used": 6,
+            "parallel_executions": 1,
+            "quality_scores": {
+                "opportunity_score": decision.opportunity_score,
+                "confidence_level": decision.confidence_level,
+            },
+        },
+        "trend_data": zeitgeist,
+        "audience_insights": audience,
+        "product_portfolio": product.get("selected_products", []),
+        "creative_concepts": creative_batch,
+        "marketing_materials": marketing,
+        "publication_queue": marketing.get("listings", []),
+    }
+
+    # Exit early if dry run: emit JSON and write report and sheets log if configured
+    if cfg.dry_run:
+        report_path = cfg.output_dir / f"run-report-{int(start_ts)}.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result_obj, indent=2))
+        print(json.dumps(result_obj, indent=2))
+        # Log to Sheets if configured
+        if cfg.gsheet_id and cfg.gservice_account_json:
+            rows = []
+            for l in marketing.get("listings", []):
+                rows.append([
+                    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    zeitgeist.get("trend_name"),
+                    l.get("title"),
+                    l.get("product_key"),
+                    "auto_text_design",
+                    json.dumps(audience.get("primary_persona", {})),
+                    ", ".join(l.get("tags", [])),
+                    "",
+                    "",
+                    0,
+                    (margin if margin is not None else cfg.default_margin),
+                    "DRY_RUN",
+                    l.get("image_path"),
+                    zeitgeist.get("opportunity_score"),
+                    zeitgeist.get("velocity"),
+                ])
+            append_rows(cfg.gsheet_id, "Product_Launches", rows, cfg.gservice_account_json)
+        return
+
+    # Publish batch via Printify → Etsy
     final_blueprint_id = blueprint_id or cfg.blueprint_id or DEFAULT_BLUEPRINTS["tee"]["blueprint_id"]
     final_provider_id = print_provider_id or cfg.print_provider_id or DEFAULT_BLUEPRINTS["tee"]["print_provider_id"]
 
-    publisher = PrintifyPublisher(api_token=cfg.printify_api_token, shop_id=cfg.printify_shop_id)
-    file_id = publisher.upload_design(out_path)
+    # Inject defaults into listings
+    for l in marketing["listings"]:
+        l.setdefault("blueprint_id", final_blueprint_id)
+        l.setdefault("print_provider_id", final_provider_id)
+        l.setdefault("colors", cfg.default_colors)
+        l.setdefault("sizes", cfg.default_sizes)
 
-    price_cents = int(round(2499 * (1 + (margin if margin is not None else cfg.default_margin))))
-    # Round to .99
-    if price_cents % 100 < 99:
-        price_cents = price_cents - (price_cents % 100) + 99
-
-    product = publisher.create_product(
-        title=slogan,
-        description=f"Auto-generated design: {slogan}",
-        blueprint_id=final_blueprint_id,
-        print_provider_id=final_provider_id,
-        print_area_file_id=file_id,
-        variant_price_cents=price_cents,
-        colors=cfg.default_colors,
-        sizes=cfg.default_sizes,
-    )
-
-    product_id = product.get("id") or product.get("product_id")
-    if not product_id:
-        raise RuntimeError(f"Failed to create product: {product}")
-
+    publisher_agent = PrintifyPublisherAgent(api_token=cfg.printify_api_token, shop_id=cfg.printify_shop_id)
     publish_as_draft = cfg.default_draft if draft is None else draft
-    result = publisher.publish_product(product_id=product_id, publish_to_store=True, publish_as_draft=publish_as_draft)
-    print(f"Published product (draft={publish_as_draft}): {result}")
+    # Adjust margin by urgency premium if needed
+    eff_margin = (margin if margin is not None else cfg.default_margin)
+    if zeitgeist.get("velocity") in ("peak",):
+        eff_margin = max(eff_margin + 0.10, 0.35)
+
+    result = publisher_agent.run_batch(marketing["listings"], margin=eff_margin, draft=publish_as_draft)
+    result_obj["publication_queue"] = result.get("publication_results", [])
+    result_obj["execution_summary"]["total_time_seconds"] = int(time.time() - start_ts)
+    report_path = cfg.output_dir / f"run-report-{int(start_ts)}.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(result_obj, indent=2))
+    print(json.dumps(result_obj, indent=2))
+    # Log to Sheets if configured
+    if cfg.gsheet_id and cfg.gservice_account_json:
+        rows = []
+        for r in result.get("publication_results", []):
+            rows.append([
+                time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                zeitgeist.get("trend_name"),
+                r.get("product_title"),
+                "tee",
+                "auto_text_design",
+                json.dumps(audience.get("primary_persona", {})),
+                "",
+                r.get("printify_product_id"),
+                "",
+                r.get("final_price"),
+                eff_margin,
+                r.get("status"),
+                r.get("design_id"),
+                zeitgeist.get("opportunity_score"),
+                zeitgeist.get("velocity"),
+            ])
+        append_rows(cfg.gsheet_id, "Product_Launches", rows, cfg.gservice_account_json)
 
 
 
@@ -99,6 +181,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--blueprint-id", type=int, default=None, help="Printify blueprint id")
     run.add_argument("--print-provider-id", type=int, default=None, help="Printify print provider id")
 
+    test_monitoring = sub.add_parser("test-monitoring", help="Test the Helios monitoring infrastructure")
+    
     return p
 
 
@@ -116,3 +200,58 @@ if __name__ == "__main__":
             blueprint_id=args.blueprint_id,
             print_provider_id=args.print_provider_id,
         )
+    elif args.command == "test-monitoring":
+        import asyncio
+        from .services.google_cloud.performance_monitor import PerformanceMonitor
+        
+        async def run_monitoring_test():
+            try:
+                # Load configuration
+                cfg = load_config()
+                
+                # Initialize performance monitor
+                monitor = PerformanceMonitor(cfg)
+                
+                # Set up monitoring infrastructure
+                print("🔧 Setting up monitoring infrastructure...")
+                await monitor.setup_monitoring_infrastructure()
+                
+                # Record some test metrics
+                print("📊 Recording test metrics...")
+                await monitor.record_pipeline_metric(
+                    execution_time=120.5,
+                    trend_opportunity_score=0.85,
+                    audience_confidence=0.92,
+                    design_generation_success=0.88,
+                    publication_success=0.95
+                )
+                
+                await monitor.record_stage_metric(
+                    stage="trend_discovery",
+                    duration=45.2,
+                    success=True,
+                    error_count=0,
+                    additional_data={"trends_found": 12, "confidence_avg": 0.87}
+                )
+                
+                # Wait for metrics to be flushed
+                print("⏳ Waiting for metrics to be flushed...")
+                await asyncio.sleep(35)
+                
+                # Get performance summary
+                summary = await monitor.get_performance_summary()
+                print("📈 Performance Summary:")
+                print(f"  - Total metrics recorded: {summary.get('total_metrics', 0)}")
+                print(f"  - Average execution time: {summary.get('avg_execution_time', 0):.2f}s")
+                print(f"  - Success rate: {summary.get('success_rate', 0):.2%}")
+                
+                print("✅ Monitoring test completed successfully!")
+                
+            except Exception as e:
+                print(f"❌ Monitoring test failed: {e}")
+                return 1
+            
+            return 0
+        
+        exit_code = asyncio.run(run_monitoring_test())
+        exit(exit_code)

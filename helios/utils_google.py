@@ -12,8 +12,10 @@ def get_gspread_client(service_json: str | None) -> gspread.Client | None:
     if not service_json:
         return None
     try:
-        if os.path.exists(service_json):
-            info = json.loads(open(service_json, "r").read())
+        # Expand tilde in path if present
+        expanded_path = os.path.expanduser(service_json)
+        if os.path.exists(expanded_path):
+            info = json.loads(open(expanded_path, "r").read())
         else:
             info = json.loads(service_json)
     except Exception:

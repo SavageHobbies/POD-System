@@ -205,3 +205,4 @@ output/*.jpeg
 *.generated.png
 *.generated.jpg
 *.generated.jpeg
+.env

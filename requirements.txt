@@ -1,7 +1,65 @@
+# Core Libraries
 requests>=2.31.0
 python-dotenv>=1.0.1
 pydantic>=2.7.0
 Pillow>=10.3.0
 tenacity>=8.2.3
-openai>=1.42.0
-pytrends>=4.9.2
+loguru>=0.7.0
+
+# Google Cloud Platform Dependencies
+google-cloud-aiplatform>=1.38.0
+google-cloud-storage>=2.10.0
+google-cloud-firestore>=2.13.0
+google-cloud-secret-manager>=2.16.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.100.0
+googleapiclient>=2.100.0
+google-api-core>=2.11.0
+
+# Google Workspace APIs
+gspread>=6.1.4
+google-cloud-sheets>=0.1.0
+google-cloud-drive>=0.1.0
+
+# AI/ML Libraries
+google-generativeai>=0.7.2
+vertexai>=1.38.0
+langchain-google-vertexai>=0.1.0
+
+# MCP Integration
+mcp>=1.0.0
+google-mcp-tools>=1.0.0
+mcp-client>=0.5.0
+
+# Web Scraping and APIs
+aiohttp>=3.8.5
+tweepy>=4.14.0
+praw>=7.7.1
+beautifulsoup4>=4.12.2
+pytrends>=4.9.0
+
+# Async Processing
+aiofiles>=23.2.0
+asyncpg>=0.28.0
+celery>=5.3.0
+redis>=4.6.0
+
+# Data Processing
+pandas>=2.1.0
+numpy>=1.25.0
+scipy>=1.11.0
+python-dateutil>=2.8.2
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+
+# External APIs
+printify-python>=1.0.0
+etsy-python>=2.0.0
+
+# Utilities
+pathlib2>=2.3.7

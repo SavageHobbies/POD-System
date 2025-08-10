@@ -88,3 +88,88 @@ class PrintifyPublisherAgent:
                 "failed_publications": sum(1 for r in results if r["status"] == "failed"),
             },
         }
+
+    async def publish_batch(self, products_to_publish: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Publish a batch of products to Printify"""
+        try:
+            # Convert to the format expected by run_batch
+            listings = []
+            for product_data in products_to_publish:
+                design = product_data.get("design", {})
+                product = product_data.get("product", {})
+                marketing = product_data.get("marketing", {})
+                
+                # Create listing format
+                listing = {
+                    "image_path": design.get("image_path", ""),
+                    "title": design.get("title", product.get("name", "Unknown Product")),
+                    "description": marketing.get("product_description", design.get("description", "")),
+                    "blueprint_id": product.get("blueprint_id", 1),
+                    "print_provider_id": product.get("print_provider_id", 1),
+                    "colors": product.get("colors", ["white"]),
+                    "sizes": product.get("sizes", ["M"]),
+                    "marketing_copy": marketing
+                }
+                listings.append(listing)
+            
+            # Use existing run_batch method
+            result = self.run_batch(listings, margin=0.5, draft=True)
+            
+            return result.get("publication_results", [])
+            
+        except Exception as e:
+            print(f"Error in batch publishing: {e}")
+            return []
+
+    async def publish_product(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Publish a single product to Printify"""
+        try:
+            design = product_data.get("design", {})
+            product = product_data.get("product", {})
+            marketing = product_data.get("marketing", {})
+            
+            # Create listing format
+            listing = {
+                "image_path": design.get("image_path", ""),
+                "title": design.get("title", product.get("name", "Unknown Product")),
+                "description": marketing.get("product_description", design.get("description", "")),
+                "blueprint_id": product.get("blueprint_id", 1),
+                "print_provider_id": product.get("print_provider_id", 1),
+                "colors": product.get("colors", ["white"]),
+                "sizes": product.get("sizes", ["M"]),
+                "marketing_copy": marketing
+            }
+            
+            # Use existing run_batch method with single item
+            result = self.run_batch([listing], margin=0.5, draft=True)
+            
+            if result.get("publication_results"):
+                return result["publication_results"][0]
+            else:
+                return {
+                    "design_id": design.get("id", "unknown"),
+                    "product_title": listing["title"],
+                    "printify_product_id": None,
+                    "image_upload_id": None,
+                    "status": "failed",
+                    "sales_channels": ["etsy"],
+                    "final_price": 0,
+                    "profit_margin": 0.5,
+                    "publication_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "error_details": "No result returned from batch processing"
+                }
+                
+        except Exception as e:
+            print(f"Error publishing single product: {e}")
+            return {
+                "design_id": product_data.get("design", {}).get("id", "unknown"),
+                "product_title": "Unknown Product",
+                "printify_product_id": None,
+                "image_upload_id": None,
+                "status": "failed",
+                "sales_channels": ["etsy"],
+                "final_price": 0,
+                "profit_margin": 0.5,
+                "publication_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "error_details": str(e)
+            }

@@ -153,6 +153,7 @@ class PrintifyPublisher:
         publish_to_store: bool = True,
         publish_as_draft: bool = True,
     ) -> Dict[str, Any]:
+        # Publish to connected sales channel (e.g., Etsy) via Printify
         payload = {
             "title": True,
             "description": True,

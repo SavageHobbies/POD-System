@@ -1,50 +1,32 @@
 from __future__ import annotations
 
 from typing import List
+import requests
+import xml.etree.ElementTree as ET
 
 
 def fetch_trends(seed: str | None = None, geo: str = "US", timeframe: str = "now 7-d", top_n: int = 10) -> List[str]:
     """
-    Returns a list of trend terms. If pytrends is available, use it; otherwise return a fallback list.
+    Returns a list of trend terms using public Google Trends RSS as a last-resort fallback.
     """
+    # Fallback: Google Trends RSS (Top daily trends)
     try:
-        from pytrends.request import TrendReq  # type: ignore
-    except Exception:
-        # Fallback: lightweight seed-based ideas
-        fallback = [
-            "retro vaporwave",
-            "funny cat meme",
-            "fitness motivation",
-            "dad jokes shirt",
-            "ai generated art",
-            "cottagecore aesthetic",
-            "booktok quotes",
-            "gaming nostalgia",
-            "plant mom",
-            "coffee lover",
-        ]
-        return fallback[:top_n]
-
-    pytrends = TrendReq(hl="en-US", tz=360)
-
-    if seed:
-        kw_list = [seed]
-        pytrends.build_payload(kw_list, cat=0, timeframe=timeframe, geo=geo, gprop="")
-        related = pytrends.related_queries()
-        try:
-            top_df = related.get(seed, {}).get("top")
-            if top_df is not None and not top_df.empty:
-                return [str(x) for x in top_df["query"].head(top_n).tolist()]
-        except Exception:
-            pass
-
-    # If no seed or related failed, fallback to trending searches
-    try:
-        trending_df = pytrends.trending_searches(pn="united_states")
-        if trending_df is not None and not trending_df.empty:
-            return [str(x) for x in trending_df[0].head(top_n).tolist()]
+        # Example RSS: https://trends.google.com/trends/trendingsearches/daily/rss?geo=US
+        url = f"https://trends.google.com/trends/trendingsearches/daily/rss?geo={geo.upper()}"
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        ns = {"ns": "http://www.w3.org/2005/Atom"}
+        # The feed is RSS 2.0 with channel/item
+        items = root.findall("channel/item")
+        terms: List[str] = []
+        for it in items[: top_n * 2]:
+            title_el = it.find("title")
+            if title_el is not None and title_el.text:
+                terms.append(title_el.text)
+        if terms:
+            return terms[:top_n]
     except Exception:
         pass
 
-    # Final fallback
     return ["minimalist quote", "positive vibes", "summer aesthetic", "pet lover", "hiking"][:top_n]
