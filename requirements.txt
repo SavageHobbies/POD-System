@@ -1,0 +1,7 @@
+requests>=2.31.0
+python-dotenv>=1.0.1
+pydantic>=2.7.0
+Pillow>=10.3.0
+tenacity>=8.2.3
+openai>=1.42.0
+pytrends>=4.9.2
