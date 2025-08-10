@@ -196,13 +196,12 @@ $RECYCLE.BIN/
 
 # Helios specific
 output/
-*.png
-*.jpg
-*.jpeg
 run-report-*.json
-mcp/
-designer/
-generator/
-publisher/
-trends/
-assets/
+
+# Generated images (but not source designs)
+output/*.png
+output/*.jpg
+output/*.jpeg
+*.generated.png
+*.generated.jpg
+*.generated.jpeg

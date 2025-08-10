@@ -1,0 +1,17 @@
+This is a placeholder file.
+
+To test the Printify API integration:
+
+1. Replace this file with a PNG image of your design
+2. The image should be:
+   - PNG format (recommended)
+   - At least 1000x1000 pixels
+   - Transparent background (optional but recommended)
+   - High quality for best print results
+
+3. Rename it to something like:
+   - test_design.png
+   - retro_gaming.png
+   - pixel_art.png
+
+4. Then run the test scripts to create products!
