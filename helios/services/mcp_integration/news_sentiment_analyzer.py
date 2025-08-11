@@ -754,6 +754,66 @@ class NewsSentimentAnalyzer:
         # Placeholder for trend insights
         return {"status": "analysis_pending", "trends_count": len(trends)}
     
+    async def analyze_trending_topics(
+        self,
+        categories: List[str] = None,
+        time_window: str = "7d",
+        limit: int = 15
+    ) -> Dict[str, Any]:
+        """Analyze trending topics from news sources"""
+        try:
+            if categories is None:
+                categories = ["business", "technology", "entertainment"]
+            
+            # Get trending news for each category
+            trending_topics = []
+            for category in categories[:3]:  # Limit to 3 categories
+                try:
+                    news_data = await self.get_trending_news(
+                        category=category,
+                        time_range=time_window,
+                        limit=limit // len(categories)
+                    )
+                    
+                    if news_data.get("status") == "success" and "articles" in news_data:
+                        for article in news_data["articles"]:
+                            trending_topics.append({
+                                "topic": article.get("title", "Unknown Topic"),
+                                "category": category,
+                                "sentiment": article.get("sentiment_score", 0),
+                                "volume": 1,  # Single article
+                                "trend_score": article.get("trend_score", 0),
+                                "source": article.get("source", "news"),
+                                "url": article.get("url"),
+                                "published": article.get("published")
+                            })
+                except Exception as e:
+                    logger.warning(f"Failed to get trending news for category {category}: {e}")
+                    continue
+            
+            # Sort by trend score and limit results
+            trending_topics.sort(key=lambda x: x.get("trend_score", 0), reverse=True)
+            trending_topics = trending_topics[:limit]
+            
+            return {
+                "status": "success",
+                "trending_topics": trending_topics,
+                "categories": categories,
+                "time_window": time_window,
+                "total_topics": len(trending_topics),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing trending topics: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "trending_topics": [],
+                "categories": categories or [],
+                "time_window": time_window
+            }
+    
     async def close(self):
         """Clean up resources"""
         if self.mcp_client:

@@ -15,12 +15,12 @@ google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.1.1
 google-api-python-client>=2.100.0
-googleapiclient>=2.100.0
+google-api-python-client>=2.100.0
 google-api-core>=2.11.0
 
 # Google Workspace APIs
 gspread>=6.1.4
-google-cloud-sheets>=0.1.0
+google-sheets-api>=0.1.0
 google-cloud-drive>=0.1.0
 
 # AI/ML Libraries

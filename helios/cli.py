@@ -183,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     test_monitoring = sub.add_parser("test-monitoring", help="Test the Helios monitoring infrastructure")
     
+    orchestrator = sub.add_parser("orchestrator", help="Run the Helios Autonomous Store Orchestrator")
+    orchestrator.add_argument("--continuous", action="store_true", help="Run in continuous mode (every 6 hours)")
+    orchestrator.add_argument("--dry-run", action="store_true", help="Run in dry-run mode")
+    orchestrator.add_argument("--config-file", default="config/development.yaml", help="Configuration file path")
+    
     return p
 
 
@@ -254,4 +259,56 @@ if __name__ == "__main__":
             return 0
         
         exit_code = asyncio.run(run_monitoring_test())
+        exit(exit_code)
+    elif args.command == "orchestrator":
+        import asyncio
+        from .services.helios_orchestrator import create_helios_orchestrator
+        
+        async def run_orchestrator():
+            try:
+                # Load configuration
+                cfg = load_config(args.config_file)
+                
+                # Override dry_run if specified
+                if args.dry_run:
+                    cfg.dry_run = True
+                    cfg.allow_live_publishing = False
+                
+                print("🚀 Starting Helios Autonomous Store Orchestrator...")
+                print(f"📁 Config: {args.config_file}")
+                print(f"🔒 Dry Run: {cfg.dry_run}")
+                print(f"🌐 Project: {cfg.google_cloud_project}")
+                
+                # Create orchestrator
+                orchestrator = await create_helios_orchestrator(cfg)
+                
+                if args.continuous:
+                    print("🔄 Starting continuous operation (every 6 hours)...")
+                    await orchestrator.start_continuous_operation()
+                else:
+                    print("🔄 Running single orchestration cycle...")
+                    result = await orchestrator.run_complete_cycle()
+                    
+                    # Display results
+                    print("\n📊 Orchestration Results:")
+                    print(f"   Status: {result.get('status')}")
+                    print(f"   Session ID: {result.get('session_id')}")
+                    print(f"   Execution Time: {result.get('execution_time', 0):.1f}s")
+                    print(f"   Trends Discovered: {result.get('trends_discovered', 0)}")
+                    print(f"   Products Generated: {result.get('products_generated', 0)}")
+                    print(f"   Experiments Created: {result.get('experiments_created', 0)}")
+                    
+                    # Get summary
+                    summary = await orchestrator.get_orchestration_summary()
+                    print(f"\n📈 Total Sessions: {summary.get('total_sessions', 0)}")
+                    
+                await orchestrator.cleanup()
+                
+            except Exception as e:
+                print(f"❌ Orchestrator failed: {e}")
+                return 1
+            
+            return 0
+        
+        exit_code = asyncio.run(run_orchestrator())
         exit(exit_code)

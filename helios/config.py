@@ -7,7 +7,11 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from .utils import split_csv
+def split_csv(value: str | None) -> list[str]:
+    """Split a comma-separated string into a list, handling None values"""
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
 
 
 @dataclass

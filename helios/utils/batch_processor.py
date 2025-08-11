@@ -13,8 +13,17 @@ from enum import Enum
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import multiprocessing
 
-from google.cloud import firestore
-from google.cloud import pubsub_v1
+try:
+    from google.cloud import firestore
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    GOOGLE_CLOUD_AVAILABLE = False
+
+try:
+    from google.cloud import pubsub_v1
+    PUBSUB_AVAILABLE = True
+except ImportError:
+    PUBSUB_AVAILABLE = False
 
 from .performance_monitor import monitor_performance, get_performance_monitor
 from .error_handler import handle_errors, get_error_handler
@@ -127,13 +136,17 @@ class BatchProcessor:
         self.firestore_client = None
         self.pubsub_client = None
         
-        if self.project_id:
+        if self.project_id and GOOGLE_CLOUD_AVAILABLE:
             try:
-                self.firestore_client = firestore.Client(project=project_id)
-                self.pubsub_client = pubsub_v1.PublisherClient()
+                if GOOGLE_CLOUD_AVAILABLE:
+                    self.firestore_client = firestore.Client(project=project_id)
+                if PUBSUB_AVAILABLE:
+                    self.pubsub_client = pubsub_v1.PublisherClient()
                 logger.info(f"Initialized batch processor clients for project: {project_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize batch processor clients: {str(e)}")
+        elif not GOOGLE_CLOUD_AVAILABLE:
+            logger.warning("Google Cloud libraries not available, skipping batch processor client setup")
         
         # Performance monitor
         self.performance_monitor = get_performance_monitor(project_id) if enable_monitoring else None

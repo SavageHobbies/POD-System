@@ -7,14 +7,26 @@ from ..services.google_cloud.vertex_ai_client import VertexAIClient
 from ..services.google_cloud.sheets_client import GoogleSheetsClient
 from ..services.google_cloud.drive_client import GoogleDriveClient
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import random
 import math
 from dataclasses import dataclass, field
 from enum import Enum
 import statistics
-from scipy import stats
+try:
+    from scipy import stats
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    # Fallback statistics functions
+    def ttest_ind(a, b):
+        """Simple t-test fallback when scipy is not available"""
+        return None, 1.0  # Return no statistic, p-value of 1.0 (not significant)
+    
+    def chi2_contingency(observed):
+        """Simple chi-square test fallback when scipy is not available"""
+        return None, 1.0, None, None  # Return no statistic, p-value of 1.0, no degrees of freedom, no expected values
 import numpy as np
 
 
@@ -36,8 +48,14 @@ class MarketingCopywriter:
                     project_id=self.config.google_cloud_project,
                     location=self.config.google_cloud_location
                 )
-                self.sheets_client = GoogleSheetsClient()
-                self.drive_client = GoogleDriveClient()
+                self.sheets_client = GoogleSheetsClient(
+                    service_account_json=self.config.google_service_account_json,
+                    spreadsheet_id=self.config.google_sheets_tracking_id
+                )
+                self.drive_client = GoogleDriveClient(
+                    service_account_json=self.config.google_service_account_json,
+                    folder_id=self.config.google_drive_folder_id
+                )
             except Exception as e:
                 print(f"Warning: Could not initialize Google Cloud services: {e}")
         
@@ -301,7 +319,7 @@ class MarketingCopywriter:
                 "status": "success",
                 "performance_insights": performance_insights,
                 "campaign_tracked": True,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -798,7 +816,7 @@ class MarketingCopywriter:
             # Prepare data for sheets
             sheet_data = [
                 [
-                    datetime.utcnow().isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                     campaign_data.get('campaign_name', 'Unknown'),
                     campaign_data.get('platform', 'Unknown'),
                     campaign_data.get('impressions', 0),
@@ -1052,7 +1070,7 @@ class MarketingCopywriter:
                 "experiment_name": experiment.experiment_name,
                 "content_variations": content_variations,
                 "test_config": test_config,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -1060,7 +1078,7 @@ class MarketingCopywriter:
             return {
                 "status": "error",
                 "error": str(e),
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
     
     async def _generate_optimized_content(self, creative_batch: Dict[str, Any], 
@@ -1176,7 +1194,7 @@ class MarketingCopywriter:
                 "experiment_id": experiment_id,
                 "variant_id": variant_id,
                 "performance_score": performance_score,
-                "recorded_at": datetime.utcnow().isoformat()
+                "recorded_at": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -1184,7 +1202,7 @@ class MarketingCopywriter:
             return {
                 "status": "error",
                 "error": str(e),
-                "recorded_at": datetime.utcnow().isoformat()
+                "recorded_at": datetime.now(timezone.utc).isoformat()
             }
     
     def _calculate_interaction_performance_score(self, interaction_data: Dict[str, Any]) -> float:
@@ -1236,14 +1254,14 @@ class MarketingCopywriter:
                         }
                     },
                     "experiment_summary": experiment_summary,
-                    "determined_at": datetime.utcnow().isoformat()
+                    "determined_at": datetime.now(timezone.utc).isoformat()
                 }
             else:
                 return {
                     "status": "no_winner",
                     "message": "No statistically significant winner yet",
                     "experiment_id": experiment_id,
-                    "checked_at": datetime.utcnow().isoformat()
+                    "checked_at": datetime.now(timezone.utc).isoformat()
                 }
                 
         except Exception as e:
@@ -1251,7 +1269,7 @@ class MarketingCopywriter:
             return {
                 "status": "error",
                 "error": str(e),
-                "checked_at": datetime.utcnow().isoformat()
+                "checked_at": datetime.now(timezone.utc).isoformat()
             }
     
     async def get_learning_insights(self) -> Dict[str, Any]:
@@ -1270,7 +1288,7 @@ class MarketingCopywriter:
                 "optimized_parameters": optimized_params,
                 "parameter_trends": parameter_trends,
                 "actionable_insights": insights,
-                "retrieved_at": datetime.utcnow().isoformat()
+                "retrieved_at": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -1278,7 +1296,7 @@ class MarketingCopywriter:
             return {
                 "status": "error",
                 "error": str(e),
-                "retrieved_at": datetime.utcnow().isoformat()
+                "retrieved_at": datetime.now(timezone.utc).isoformat()
             }
     
     def _generate_learning_insights(self, optimized_params: Dict[str, float], 
@@ -1341,7 +1359,7 @@ class ABTestVariant:
     content_variations: Dict[str, Any]
     traffic_allocation: float  # Percentage of traffic (0.0 to 1.0)
     is_control: bool = False
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def __post_init__(self):
         if not 0.0 <= self.traffic_allocation <= 1.0:
@@ -1413,7 +1431,7 @@ class ABTestingFramework:
         """Create a new A/B test experiment"""
         try:
             # Generate unique experiment ID
-            experiment_id = f"ab_test_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{random.randint(1000, 9999)}"
+            experiment_id = f"ab_test_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{random.randint(1000, 9999)}"
             
             # Create variants
             variants = []
@@ -1436,7 +1454,7 @@ class ABTestingFramework:
                 experiment_name=experiment_config["name"],
                 description=experiment_config.get("description", ""),
                 variants=variants,
-                start_date=datetime.utcnow(),
+                start_date=datetime.now(timezone.utc),
                 primary_metric=experiment_config.get("primary_metric", "conversion_rate"),
                 confidence_level=experiment_config.get("confidence_level", 0.95),
                 minimum_sample_size=experiment_config.get("minimum_sample_size", 1000)
@@ -1549,7 +1567,10 @@ class ABTestingFramework:
                                    [variant_conversions, variant_non_conversions]])
                 
                 # Perform chi-square test
-                chi2, p_value = stats.chi2_contingency(observed)[:2]
+                if SCIPY_AVAILABLE:
+                    chi2, p_value = stats.chi2_contingency(observed)[:2]
+                else:
+                    chi2, p_value = chi2_contingency(observed)[:2]
                 
                 return p_value < (1 - 0.95)  # 95% confidence level
                 
@@ -1671,7 +1692,7 @@ class ABTestingFramework:
         try:
             if experiment_id in self.experiments:
                 self.experiments[experiment_id].status = "completed"
-                self.experiments[experiment_id].end_date = datetime.utcnow()
+                self.experiments[experiment_id].end_date = datetime.now(timezone.utc)
                 return True
             return False
         except Exception as e:
@@ -2204,10 +2225,16 @@ class ABTestingFramework:
                     variant_success = variant.conversions
                     variant_failure = variant.impressions - variant.conversions
                     
-                    chi2_stat, p_value = stats.chi2_contingency([
-                        [control_success, control_failure],
-                        [variant_success, variant_failure]
-                    ])[:2]
+                    if SCIPY_AVAILABLE:
+                        chi2_stat, p_value = stats.chi2_contingency([
+                            [control.conversions, control.impressions - control.conversions],
+                            [variant.conversions, variant.impressions - variant.conversions]
+                        ])[:2]
+                    else:
+                        chi2_stat, p_value = chi2_contingency([
+                            [control.conversions, control.impressions - control.conversions],
+                            [variant.conversions, variant.impressions - variant.conversions]
+                        ])[:2]
                     
                     significance_tests[f"{variant.variant_name}_conversion"] = {
                         "test_type": "chi_square",
@@ -2226,7 +2253,10 @@ class ABTestingFramework:
                     variant_revenue = [variant.revenue] * variant.conversions if variant.conversions > 0 else [0]
                     
                     if len(control_revenue) > 1 and len(variant_revenue) > 1:
-                        t_stat, p_value = stats.ttest_ind(control_revenue, variant_revenue)
+                        if SCIPY_AVAILABLE:
+                            t_stat, p_value = stats.ttest_ind(control_revenue, variant_revenue)
+                        else:
+                            t_stat, p_value = ttest_ind(control_revenue, variant_revenue)
                         significance_tests[f"{variant.variant_name}_revenue"] = {
                             "test_type": "t_test",
                             "statistic": float(t_stat),
@@ -2321,14 +2351,21 @@ class ABTestingFramework:
             
             # Calculate power using normal approximation
             alpha = 1 - experiment.confidence_level
-            z_alpha = stats.norm.ppf(1 - alpha/2)  # Two-tailed test
+            if SCIPY_AVAILABLE:
+                z_alpha = stats.norm.ppf(1 - alpha/2)  # Two-tailed test
+            else:
+                z_alpha = 1.96  # Standard 95% confidence interval z-score
             
             # Sample size per group (assuming equal allocation)
             n_per_group = total_impressions / len(results)
             
             # Power calculation using normal approximation
             z_beta = (effect_size * math.sqrt(n_per_group/2)) - z_alpha
-            power = stats.norm.cdf(z_beta)
+            if SCIPY_AVAILABLE:
+                power = stats.norm.cdf(z_beta)
+            else:
+                # Simple power calculation approximation
+                power = 0.5  # Default to 50% power when scipy is not available
             
             return min(1.0, max(0.0, power))
             

@@ -1,8 +1,8 @@
 from typing import Dict, List, Any
 import asyncio
-from ..services.external_apis.printify_client import PrintifyClient
-from ..mcp_client import MCPClient
-from ..config import load_config
+from helios.services.external_apis.printify_client import PrintifyAPIClient
+from helios.mcp_client import MCPClient
+from helios.config import load_config
 
 class SupplierVettingService:
     """Comprehensive supplier vetting system for POD business"""
@@ -13,7 +13,7 @@ class SupplierVettingService:
             self.config.google_mcp_url, 
             self.config.google_mcp_auth_token
         )
-        self.printify_client = PrintifyClient(self.config.printify_api_token)
+        self.printify_client = PrintifyAPIClient(self.config.printify_api_token, self.config.printify_shop_id)
     
     async def vet_pod_suppliers(self) -> Dict[str, Any]:
         """Vet potential POD suppliers"""
@@ -88,27 +88,21 @@ class SupplierVettingService:
         """Evaluate current Printify setup"""
         
         try:
-            # Test API connection
-            shops = await self.printify_client.get_shops()
+            # Test API connection using health check
+            health_check = await self.printify_client.health_check()
             
-            # Get supplier information
-            suppliers = await self.printify_client.get_print_providers()
+            # Get existing products to test API
+            products_result = await self.printify_client.get_products(limit=5)
             
-            # Test product creation
-            test_product = await self.printify_client.create_product({
-                "title": "Test Product",
-                "description": "Test description",
-                "blueprint_id": 482,
-                "print_provider_id": 1,
-                "variants": [{"id": 1, "price": 1000}]
-            })
+            # Test with a simple health check instead of creating test products
+            test_status = "healthy" if health_check.get("success") else "unhealthy"
             
             return {
                 "status": "operational",
-                "api_health": "good",
-                "supplier_count": len(suppliers),
-                "shop_count": len(shops),
-                "test_product_created": bool(test_product),
+                "api_health": test_status,
+                "products_retrieved": products_result.get("success", False),
+                "total_products": products_result.get("total_count", 0) if products_result.get("success") else 0,
+                "api_connection": health_check.get("success", False),
                 "recommendations": [
                     "Continue with Printify as primary provider",
                     "Implement quality control measures",
@@ -154,19 +148,25 @@ class SupplierVettingService:
     def _parse_alternative_data(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Parse AI response for alternative supplier data"""
         # This would parse the AI response into structured data
-        # For now, return sample alternatives
+        # For now, return sample alternatives with all required keys
         return [
             {
                 "name": "Redbubble",
                 "pros": ["Large marketplace", "Good for exposure", "No upfront costs"],
                 "cons": ["Lower profit margins", "Less control", "Competition"],
-                "best_for": "Market testing, brand exposure"
+                "best_for": "Market testing, brand exposure",
+                "pricing": "No monthly fees, lower profit margins",
+                "supplier_count": "Marketplace platform",
+                "shipping_time": "5-10 business days"
             },
             {
                 "name": "TeePublic",
                 "pros": ["Gaming-focused audience", "Good community", "No upfront costs"],
                 "cons": ["Lower margins", "Limited customization", "Competition"],
-                "best_for": "Gaming-specific products"
+                "best_for": "Gaming-specific products",
+                "pricing": "No monthly fees, competitive pricing",
+                "supplier_count": "Marketplace platform",
+                "shipping_time": "5-8 business days"
             }
         ]
     
@@ -285,12 +285,12 @@ Comprehensive evaluation of print-on-demand suppliers for vintage gaming merchan
         for platform in vetting_results['alternative_platforms']:
             report += f"""
 ### {platform['name']}
-- Best For: {platform['best_for']}
-- Pricing: {platform['pricing']}
-- Supplier Count: {platform['supplier_count']}
-- Shipping Time: {platform['shipping_time']}
-- Pros: {', '.join(platform['pros'])}
-- Cons: {', '.join(platform['cons'])}
+- Best For: {platform.get('best_for', 'N/A')}
+- Pricing: {platform.get('pricing', 'N/A')}
+- Supplier Count: {platform.get('supplier_count', 'N/A')}
+- Shipping Time: {platform.get('shipping_time', 'N/A')}
+- Pros: {', '.join(platform.get('pros', []))}
+- Cons: {', '.join(platform.get('cons', []))}
 
 """
         

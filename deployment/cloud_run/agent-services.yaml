@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: trend-discovery
+  name: helios-agents
   namespace: default
   annotations:
     run.googleapis.com/ingress: all
@@ -15,14 +15,14 @@ spec:
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/cpu-throttling: "false"
         run.googleapis.com/startup-cpu-boost: "true"
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "5"
-        run.googleapis.com/timeout: "300s"
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "20"
+        run.googleapis.com/timeout: "1800s"
     spec:
-      containerConcurrency: 40
-      timeoutSeconds: 300
+      containerConcurrency: 100
+      timeoutSeconds: 1800
       containers:
-      - image: gcr.io/helios-autonomous-store/trend-discovery:latest
+      - image: gcr.io/helios-pod-system/helios-agents:latest
         ports:
         - containerPort: 8080
         resources:
@@ -31,128 +31,45 @@ spec:
             memory: "8Gi"
         env:
         - name: GOOGLE_CLOUD_PROJECT
-          value: "helios-autonomous-store"
+          value: "helios-pod-system"
         - name: GOOGLE_CLOUD_REGION
           value: "us-central1"
-        - name: ENABLE_GOOGLE_TRENDS_TOOL
+        - name: ENABLE_PARALLEL_PROCESSING
           value: "true"
-        - name: ENABLE_SOCIAL_MEDIA_SCANNER
+        - name: ENABLE_BATCH_CREATION
           value: "true"
-        - name: ENABLE_NEWS_ANALYZER
-          value: "true"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-      serviceAccountName: helios-automation-sa
----
-apiVersion: serving.knative.dev/v1
-kind: Service
-metadata:
-  name: content-generation
-  namespace: default
-  annotations:
-    run.googleapis.com/ingress: all
-    run.googleapis.com/execution-environment: gen2
-    run.googleapis.com/cpu-throttling: "false"
-    run.googleapis.com/startup-cpu-boost: "true"
-spec:
-  template:
-    metadata:
-      annotations:
-        run.googleapis.com/execution-environment: gen2
-        run.googleapis.com/cpu-throttling: "false"
-        run.googleapis.com/startup-cpu-boost: "true"
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "8"
-        run.googleapis.com/timeout: "600s"
-    spec:
-      containerConcurrency: 60
-      timeoutSeconds: 600
-      containers:
-      - image: gcr.io/helios-autonomous-store/content-generation:latest
-        ports:
-        - containerPort: 8080
-        resources:
-          limits:
-            cpu: "4"
-            memory: "8Gi"
-        env:
-        - name: GOOGLE_CLOUD_PROJECT
-          value: "helios-autonomous-store"
-        - name: GOOGLE_CLOUD_REGION
-          value: "us-central1"
-        - name: VERTEX_AI_PROJECT_ID
-          value: "helios-autonomous-store"
-        - name: VERTEX_AI_LOCATION
-          value: "us-central1"
-        - name: IMAGEN_MODEL
-          value: "imagen-3"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-      serviceAccountName: helios-automation-sa
----
-apiVersion: serving.knative.dev/v1
-kind: Service
-metadata:
-  name: publication-handler
-  namespace: default
-  annotations:
-    run.googleapis.com/ingress: all
-    run.googleapis.com/execution-environment: gen2
-    run.googleapis.com/cpu-throttling: "false"
-    run.googleapis.com/startup-cpu-boost: "true"
-spec:
-  template:
-    metadata:
-      annotations:
-        run.googleapis.com/execution-environment: gen2
-        run.googleapis.com/cpu-throttling: "false"
-        run.googleapis.com/startup-cpu-boost: "true"
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "3"
-        run.googleapis.com/timeout: "300s"
-    spec:
-      containerConcurrency: 30
-      timeoutSeconds: 300
-      containers:
-      - image: gcr.io/helios-autonomous-store/publication-handler:latest
-        ports:
-        - containerPort: 8080
-        resources:
-          limits:
-            cpu: "2"
-            memory: "4Gi"
-        env:
-        - name: GOOGLE_CLOUD_PROJECT
-          value: "helios-autonomous-store"
-        - name: GOOGLE_CLOUD_REGION
-          value: "us-central1"
+        - name: MIN_OPPORTUNITY_SCORE
+          value: "7.0"
+        - name: MIN_AUDIENCE_CONFIDENCE
+          value: "7.0"
+        - name: MAX_EXECUTION_TIME
+          value: "1800"
         - name: PRINTIFY_API_TOKEN
           valueFrom:
             secretKeyRef:
-              name: printify-api-token
-              key: latest
+              name: helios-secrets
+              key: printify-api-token
         - name: PRINTIFY_SHOP_ID
           value: "8542090"
+        - name: GOOGLE_MCP_URL
+          value: "http://helios-mcp:8787"
+        - name: GOOGLE_MCP_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: helios-secrets
+              key: google-mcp-auth-token
+        - name: VERTEX_AI_PROJECT_ID
+          value: "helios-pod-system"
+        - name: VERTEX_AI_LOCATION
+          value: "us-central1"
+        - name: ENABLE_MARKET_RESEARCH
+          value: "true"
+        - name: ENABLE_SUPPLIER_VETTING
+          value: "true"
+        - name: ENABLE_COPYRIGHT_REVIEW
+          value: "true"
+        - name: ENABLE_ETHICAL_CODE
+          value: "true"
         livenessProbe:
           httpGet:
             path: /health

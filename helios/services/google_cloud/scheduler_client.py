@@ -11,11 +11,23 @@ from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
 from loguru import logger
 
-from google.cloud import scheduler_v1
-from google.cloud.scheduler_v1 import Job, CreateJobRequest, UpdateJobRequest, DeleteJobRequest
-from google.cloud.scheduler_v1.types import Job as JobType
-from google.api_core.exceptions import GoogleAPIError
-from google.auth.exceptions import DefaultCredentialsError
+try:
+    from google.cloud import scheduler_v1
+    from google.cloud.scheduler_v1 import Job, CreateJobRequest, UpdateJobRequest, DeleteJobRequest
+    from google.cloud.scheduler_v1.types import Job as JobType
+    from google.api_core.exceptions import GoogleAPIError
+    from google.auth.exceptions import DefaultCredentialsError
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    scheduler_v1 = None
+    Job = None
+    CreateJobRequest = None
+    UpdateJobRequest = None
+    DeleteJobRequest = None
+    JobType = None
+    GoogleAPIError = Exception
+    DefaultCredentialsError = Exception
+    SCHEDULER_AVAILABLE = False
 
 
 @dataclass
@@ -34,10 +46,15 @@ class CloudSchedulerClient:
     def __init__(self, project_id: str, location: str = "us-central1"):
         self.project_id = project_id
         self.location = location
-        self.client = scheduler_v1.CloudSchedulerClient()
         
-        # Parent resource path
-        self.parent = f"projects/{project_id}/locations/{location}"
+        if SCHEDULER_AVAILABLE:
+            self.client = scheduler_v1.CloudSchedulerClient()
+            # Parent resource path
+            self.parent = f"projects/{project_id}/locations/{location}"
+        else:
+            self.client = None
+            self.parent = None
+            logger.warning("Google Cloud Scheduler not available - scheduler functionality will be disabled")
         
         # Job templates for common Helios workflows
         self.job_templates = {
@@ -117,6 +134,10 @@ class CloudSchedulerClient:
         Returns:
             Job creation result
         """
+        if not SCHEDULER_AVAILABLE or self.client is None:
+            logger.warning("Google Cloud Scheduler not available - cannot create job")
+            return {"success": False, "error": "Google Cloud Scheduler not available"}
+            
         try:
             # Build job path
             job_path = f"{self.parent}/jobs/{job_id}"

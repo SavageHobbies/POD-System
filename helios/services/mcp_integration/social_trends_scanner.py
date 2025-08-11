@@ -206,6 +206,55 @@ class SocialTrendsScanner:
             logger.error(f"Error identifying viral potential: {e}")
             return {"error": str(e)}
     
+    async def scan_trending_topics(
+        self,
+        platforms: List[str] = None,
+        categories: List[str] = None,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """Scan trending topics across platforms"""
+        try:
+            if platforms is None:
+                platforms = self.platforms
+            
+            # Use MCP client for cross-platform scanning
+            result = await self.scan_cross_platform_trends(
+                platforms=platforms,
+                time_range="24h",
+                limit=limit
+            )
+            
+            # Process and format results
+            trending_topics = []
+            if "trends" in result:
+                for trend in result["trends"][:limit]:
+                    trending_topics.append({
+                        "topic": trend.get("keyword", trend.get("name", "Unknown")),
+                        "platform": trend.get("platform", "unknown"),
+                        "engagement": trend.get("engagement", 0),
+                        "trend_score": trend.get("trend_score", 0),
+                        "volume": trend.get("volume", 0)
+                    })
+            
+            return {
+                "status": "success",
+                "trending_topics": trending_topics,
+                "platforms": platforms,
+                "categories": categories,
+                "total_topics": len(trending_topics),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error scanning trending topics: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "trending_topics": [],
+                "platforms": platforms or [],
+                "categories": categories or []
+            }
+    
     async def _scan_twitter_trends(
         self,
         keywords: List[str],

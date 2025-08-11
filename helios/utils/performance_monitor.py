@@ -6,7 +6,11 @@ Tracks execution times, resource usage, and performance metrics
 import asyncio
 import time
 import logging
-import psutil
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 import json
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timedelta
@@ -15,9 +19,23 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
 
-from google.cloud import firestore
-from google.cloud import monitoring_v3
-from google.cloud import pubsub_v1
+try:
+    from google.cloud import firestore
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    GOOGLE_CLOUD_AVAILABLE = False
+
+try:
+    from google.cloud import monitoring_v3
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+try:
+    from google.cloud import pubsub_v1
+    PUBSUB_AVAILABLE = True
+except ImportError:
+    PUBSUB_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +99,18 @@ class PerformanceMonitor:
     def _initialize_cloud_clients(self):
         """Initialize Google Cloud clients for monitoring"""
         
+        if not GOOGLE_CLOUD_AVAILABLE:
+            logger.warning("Google Cloud libraries not available, skipping cloud monitoring setup")
+            self.enable_cloud_monitoring = False
+            return
+        
         try:
-            self.firestore_client = firestore.Client(project=self.project_id)
-            self.monitoring_client = monitoring_v3.MetricServiceClient()
-            self.pubsub_client = pubsub_v1.PublisherClient()
+            if GOOGLE_CLOUD_AVAILABLE:
+                self.firestore_client = firestore.Client(project=self.project_id)
+            if MONITORING_AVAILABLE:
+                self.monitoring_client = monitoring_v3.MetricServiceClient()
+            if PUBSUB_AVAILABLE:
+                self.pubsub_client = pubsub_v1.PublisherClient()
             logger.info(f"Initialized cloud monitoring clients for project: {self.project_id}")
         except Exception as e:
             logger.warning(f"Failed to initialize cloud monitoring clients: {str(e)}")
@@ -103,18 +129,34 @@ class PerformanceMonitor:
         """Update resource usage baseline"""
         
         try:
-            cpu_percent = psutil.cpu_percent(interval=1)
-            memory = psutil.virtual_memory()
-            
-            self.resource_baseline = {
-                "cpu_percent": cpu_percent,
-                "memory_percent": memory.percent,
-                "memory_available": memory.available / (1024**3),  # GB
-                "disk_usage": psutil.disk_usage('/').percent
-            }
+            if PSUTIL_AVAILABLE:
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory = psutil.virtual_memory()
+                
+                self.resource_baseline = {
+                    "cpu_percent": cpu_percent,
+                    "memory_percent": memory.percent,
+                    "memory_available": memory.available / (1024**3),  # GB
+                    "disk_usage": psutil.disk_usage('/').percent
+                }
+            else:
+                # Fallback when psutil is not available
+                self.resource_baseline = {
+                    "cpu_percent": 0.0,
+                    "memory_percent": 0.0,
+                    "memory_available": 0.0,
+                    "disk_usage": 0.0
+                }
             
         except Exception as e:
             logger.warning(f"Failed to update resource baseline: {str(e)}")
+            # Set fallback values on error
+            self.resource_baseline = {
+                "cpu_percent": 0.0,
+                "memory_percent": 0.0,
+                "memory_available": 0.0,
+                "disk_usage": 0.0
+            }
     
     async def _resource_monitoring_loop(self):
         """Background resource monitoring loop"""
@@ -223,6 +265,24 @@ class PerformanceMonitor:
         # Send to Cloud Monitoring if enabled
         if self.enable_cloud_monitoring and self.monitoring_client:
             asyncio.create_task(self._send_to_cloud_monitoring(metric))
+
+    def record_metric_with_labels(self, metric_name: str, value: float, labels: Dict[str, str] = None, timestamp: datetime = None):
+        """Record a performance metric with labels (compatibility method)"""
+        
+        if timestamp is None:
+            timestamp = datetime.utcnow()
+        
+        # Create a PerformanceMetric object
+        metric = PerformanceMetric(
+            operation_name=metric_name,
+            execution_time=value,
+            timestamp=timestamp,
+            success=True,
+            context=labels or {}
+        )
+        
+        # Record using the standard method
+        self.record_metric(metric)
     
     def _update_operation_stats(self, metric: PerformanceMetric):
         """Update operation statistics"""
@@ -391,6 +451,38 @@ class PerformanceMonitor:
                 logger.info(f"Updated threshold {key}: {value}")
             else:
                 logger.warning(f"Unknown threshold key: {key}")
+
+    async def close(self):
+        """Clean up resources and close connections"""
+        try:
+            logger.info("🧹 Cleaning up PerformanceMonitor...")
+            
+            # Close cloud clients if they exist
+            if hasattr(self, 'firestore_client') and self.firestore_client:
+                try:
+                    self.firestore_client.close()
+                except Exception:
+                    pass
+                self.firestore_client = None
+            
+            if hasattr(self, 'monitoring_client') and self.monitoring_client:
+                try:
+                    self.monitoring_client.close()
+                except Exception:
+                    pass
+                self.monitoring_client = None
+            
+            if hasattr(self, 'pubsub_client') and self.pubsub_client:
+                try:
+                    self.pubsub_client.close()
+                except Exception:
+                    pass
+                self.pubsub_client = None
+            
+            logger.info("✅ PerformanceMonitor cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during PerformanceMonitor cleanup: {str(e)}")
 
 
 # Performance monitoring decorators

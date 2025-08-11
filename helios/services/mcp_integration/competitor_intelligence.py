@@ -15,8 +15,8 @@ from google.cloud import storage
 
 from ..google_cloud.vertex_ai_client import VertexAIClient
 from ..google_cloud.firestore_client import FirestoreClient
-from ..google_cloud.storage_client import StorageClient
-from .mcp_client import MCPClient
+from ..google_cloud.storage_client import CloudStorageClient
+from .mcp_client import GoogleMCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ class CompetitorIntelligenceService:
         # Initialize clients
         self.vertex_ai_client = VertexAIClient(project_id, location)
         self.firestore_client = FirestoreClient(project_id)
-        self.storage_client = StorageClient(project_id)
-        self.mcp_client = MCPClient()
+        self.storage_client = CloudStorageClient(project_id, "trend-analysis-data")
+        self.mcp_client = GoogleMCPClient()
         
         # Initialize Vertex AI
         aiplatform.init(project=project_id, location=location)
@@ -396,6 +396,75 @@ class CompetitorIntelligenceService:
             logger.error(f"Error getting competitor insights: {str(e)}")
             return []
     
+    async def analyze_competitor_trends(
+        self,
+        competitors: List[str],
+        categories: List[str],
+        time_window: str = "30d"
+    ) -> Dict[str, Any]:
+        """Analyze competitor trends and identify trending products"""
+        try:
+            logger.info(f"Analyzing competitor trends for {len(competitors)} competitors in categories: {categories}")
+            
+            trending_products = []
+            
+            # Analyze each competitor
+            for competitor in competitors:
+                try:
+                    # Get competitor landscape analysis
+                    landscape = await self.analyze_competitor_landscape(
+                        product_category=", ".join(categories),
+                        target_market="global",
+                        analysis_depth="quick"
+                    )
+                    
+                    if landscape.get("status") == "success":
+                        # Extract trending insights
+                        analysis_summary = landscape.get("analysis_summary", {})
+                        
+                        # Create trending product entry
+                        trending_product = {
+                            "product_name": f"{competitor} Trending Product",
+                            "competitor": competitor,
+                            "trend_score": landscape.get("opportunity_score", 0) / 10.0,  # Normalize to 0-1
+                            "sales_velocity": "medium",  # Placeholder
+                            "category": categories[0] if categories else "general",
+                            "market_position": analysis_summary.get("position", "unknown"),
+                            "strengths": analysis_summary.get("strengths", []),
+                            "weaknesses": analysis_summary.get("weaknesses", []),
+                            "last_updated": datetime.utcnow().isoformat()
+                        }
+                        
+                        trending_products.append(trending_product)
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to analyze competitor {competitor}: {e}")
+                    continue
+            
+            # Sort by trend score
+            trending_products.sort(key=lambda x: x.get("trend_score", 0), reverse=True)
+            
+            return {
+                "status": "success",
+                "trending_products": trending_products,
+                "competitors_analyzed": len(competitors),
+                "categories": categories,
+                "time_window": time_window,
+                "total_products": len(trending_products),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing competitor trends: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "trending_products": [],
+                "competitors_analyzed": 0,
+                "categories": categories,
+                "time_window": time_window
+            }
+
     async def monitor_competitor_changes(
         self, 
         product_category: str,
@@ -437,6 +506,32 @@ class CompetitorIntelligenceService:
         except Exception as e:
             logger.error(f"Error monitoring competitor changes: {str(e)}")
             return {"status": "error", "error": str(e)}
+
+    async def close(self):
+        """Clean up resources and close connections"""
+        try:
+            logger.info("🧹 Cleaning up CompetitorIntelligenceService...")
+            
+            # Close Vertex AI client
+            if hasattr(self, 'vertex_ai_client') and hasattr(self.vertex_ai_client, 'close'):
+                await self.vertex_ai_client.close()
+            
+            # Close Firestore client
+            if hasattr(self, 'firestore_client') and hasattr(self.firestore_client, 'close'):
+                await self.firestore_client.close()
+            
+            # Close Storage client
+            if hasattr(self, 'storage_client') and hasattr(self.storage_client, 'close'):
+                await self.storage_client.close()
+            
+            # Close MCP client
+            if hasattr(self, 'mcp_client') and hasattr(self.mcp_client, 'close'):
+                await self.mcp_client.close()
+            
+            logger.info("✅ CompetitorIntelligenceService cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during CompetitorIntelligenceService cleanup: {str(e)}")
 
 
 # Example usage

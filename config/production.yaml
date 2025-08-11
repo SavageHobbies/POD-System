@@ -3,7 +3,7 @@
 
 # Google Cloud Configuration
 google_cloud:
-  project_id: "helios-autonomous-store"
+  project_id: "helios-pod-system"
   region: "us-central1"
   zone: "us-central1-a"
   
@@ -28,7 +28,7 @@ google_cloud:
 # AI Platform Configuration
 ai_platform:
   vertex_ai:
-    project_id: "helios-autonomous-store"
+    project_id: "helios-pod-system"
     location: "us-central1"
     
     models:

@@ -12,8 +12,17 @@ from datetime import datetime, timedelta
 from functools import wraps
 from enum import Enum
 
-from google.cloud import firestore
-from google.cloud import pubsub_v1
+try:
+    from google.cloud import firestore
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    GOOGLE_CLOUD_AVAILABLE = False
+
+try:
+    from google.cloud import pubsub_v1
+    PUBSUB_AVAILABLE = True
+except ImportError:
+    PUBSUB_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -96,13 +105,17 @@ class ErrorHandler:
         self.recovery_strategies = {}
         
         # Initialize clients if project_id is available
-        if self.project_id:
+        if self.project_id and GOOGLE_CLOUD_AVAILABLE:
             try:
-                self.firestore_client = firestore.Client(project=project_id)
-                self.pubsub_client = pubsub_v1.PublisherClient()
+                if GOOGLE_CLOUD_AVAILABLE:
+                    self.firestore_client = firestore.Client(project=project_id)
+                if PUBSUB_AVAILABLE:
+                    self.pubsub_client = pubsub_v1.PublisherClient()
                 logger.info(f"Initialized error handler clients for project: {project_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize error handler clients: {str(e)}")
+        elif not GOOGLE_CLOUD_AVAILABLE:
+            logger.warning("Google Cloud libraries not available, skipping error handler client setup")
         
         # Register default recovery strategies
         self._register_default_strategies()
