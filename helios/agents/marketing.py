@@ -50,11 +50,11 @@ class MarketingCopywriter:
                 )
                 self.sheets_client = GoogleSheetsClient(
                     service_account_json=self.config.google_service_account_json,
-                    spreadsheet_id=self.config.google_sheets_tracking_id
+                    spreadsheet_id=self.config.gsheet_id
                 )
                 self.drive_client = GoogleDriveClient(
                     service_account_json=self.config.google_service_account_json,
-                    folder_id=self.config.google_drive_folder_id
+                    root_folder_id=self.config.google_drive_folder_id
                 )
             except Exception as e:
                 print(f"Warning: Could not initialize Google Cloud services: {e}")
@@ -74,7 +74,16 @@ class MarketingCopywriter:
                 mcp_response = await self.mcp_client.marketing_ai(product_info)
                 
                 if "response" in mcp_response and mcp_response["response"]:
-                    ai_copy = mcp_response["response"]
+                    raw = mcp_response["response"]
+                    # Normalize MCP response into text for downstream parsers
+                    if isinstance(raw, dict):
+                        # Prefer common keys if present
+                        text = raw.get("text") or raw.get("content") or json.dumps(raw)
+                    elif isinstance(raw, list):
+                        text = "\n".join([str(x) for x in raw])
+                    else:
+                        text = str(raw)
+                    ai_copy = text
                     model_used = mcp_response.get("model", "gemini-2.0-flash-exp")
                     
                     # Parse AI response for marketing copy
@@ -104,10 +113,8 @@ class MarketingCopywriter:
             if self.vertex_ai_client:
                 # Use Vertex AI for SEO optimization
                 response = await self.vertex_ai_client.generate_text(
-                    model=self.config.gemini_flash_model,
                     prompt=seo_prompt,
-                    max_tokens=1000,
-                    temperature=0.7
+                    model_type="gemini_flash"
                 )
                 
                 seo_copy = self._parse_seo_response(response, product_data, target_keywords)
@@ -136,14 +143,13 @@ class MarketingCopywriter:
                 "pinterest": "Create Pinterest pin description and board suggestions"
             }
             
-            prompt = f"{platform_prompts.get(platform, 'Create social media content')} for: {product_data.get('name', 'Product')}"
+            name_val = product_data.get('name') if isinstance(product_data, dict) else str(product_data)
+            prompt = f"{platform_prompts.get(platform, 'Create social media content')} for: {name_val or 'Product'}"
             
             if self.vertex_ai_client:
                 response = await self.vertex_ai_client.generate_text(
-                    model=self.config.gemini_flash_model,
                     prompt=prompt,
-                    max_tokens=500,
-                    temperature=0.8
+                    model_type="gemini_flash"
                 )
                 
                 campaign_content = self._parse_social_media_response(response, platform, product_data)
@@ -171,14 +177,13 @@ class MarketingCopywriter:
                 "newsletter": "Create a newsletter-style product showcase"
             }
             
-            prompt = f"{campaign_prompts.get(campaign_type, 'Create an email campaign')} for: {product_data.get('name', 'Product')}"
+            name_val = product_data.get('name') if isinstance(product_data, dict) else str(product_data)
+            prompt = f"{campaign_prompts.get(campaign_type, 'Create an email campaign')} for: {name_val or 'Product'}"
             
             if self.vertex_ai_client:
                 response = await self.vertex_ai_client.generate_text(
-                    model=self.config.gemini_flash_model,
                     prompt=prompt,
-                    max_tokens=800,
-                    temperature=0.7
+                    model_type="gemini_flash"
                 )
                 
                 email_content = self._parse_email_response(response, campaign_type, product_data)
@@ -205,14 +210,13 @@ class MarketingCopywriter:
                 "tiktok_ads": "Create TikTok Ads copy for in-feed ads"
             }
             
-            prompt = f"{platform_requirements.get(ad_platform, 'Create advertising copy')} for: {product_data.get('name', 'Product')}"
+            name_val = product_data.get('name') if isinstance(product_data, dict) else str(product_data)
+            prompt = f"{platform_requirements.get(ad_platform, 'Create advertising copy')} for: {name_val or 'Product'}"
             
             if self.vertex_ai_client:
                 response = await self.vertex_ai_client.generate_text(
-                    model=self.config.gemini_flash_model,
                     prompt=prompt,
-                    max_tokens=600,
-                    temperature=0.8
+                    model_type="gemini_flash"
                 )
                 
                 ad_copy = self._parse_ad_response(response, ad_platform, product_data)
@@ -246,10 +250,8 @@ class MarketingCopywriter:
             
             if self.vertex_ai_client:
                 response = await self.vertex_ai_client.generate_text(
-                    model=self.config.gemini_pro_model,
                     prompt=analysis_prompt,
-                    max_tokens=1200,
-                    temperature=0.6
+                    model_type="gemini_pro"
                 )
                 
                 competitor_analysis = self._parse_competitor_analysis(response, competitor_urls)
@@ -442,10 +444,8 @@ class MarketingCopywriter:
                 """
                 
                 response = await self.vertex_ai_client.generate_text(
-                    model=self.config.gemini_pro_model,
                     prompt=trend_prompt,
-                    max_tokens=1200,
-                    temperature=0.7
+                    model_type="gemini_pro"
                 )
                 
                 campaign_materials["trend_campaign"] = {

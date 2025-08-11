@@ -117,7 +117,7 @@ class VertexAIClient:
         model_type: str = "gemini_pro",
         system_prompt: str = None,
         context: List[Dict] = None
-    ) -> Dict[str, Any]:
+    ) -> str:
         """
         Generate text using Gemini AI
         
@@ -132,38 +132,30 @@ class VertexAIClient:
         """
         try:
             model = self.get_model(model_type)
-            
-            # Prepare messages
-            messages = []
-            
+            # Concatenate system/context into a single prompt for simplicity
+            full_prompt_parts: List[str] = []
             if system_prompt:
-                messages.append({"role": "user", "parts": [system_prompt]})
-                messages.append({"role": "model", "parts": ["I understand. I'll act according to your instructions."]})
-            
+                full_prompt_parts.append(system_prompt)
             if context:
-                messages.extend(context)
-            
-            # Add the main prompt
-            messages.append({"role": "user", "parts": [prompt]})
-            
-            # Generate response
-            response = await asyncio.to_thread(
-                model.generate_content,
-                messages,
-                stream=False
-            )
-            
-            result = {
-                "status": "success",
-                "text": response.text,
-                "model_used": model_type,
-                "tokens_used": getattr(response, 'usage_metadata', {}).get('total_token_count', 0),
-                "finish_reason": getattr(response, 'candidates', [{}])[0].get('finish_reason', 'unknown'),
-                "timestamp": time.time()
-            }
-            
-            logger.info(f"✅ Text generated using {model_type}: {len(result['text'])} characters")
-            return result
+                try:
+                    for entry in context:
+                        if isinstance(entry, dict):
+                            part = entry.get("parts") or entry.get("content") or ""
+                            if isinstance(part, list):
+                                full_prompt_parts.extend([str(p) for p in part])
+                            else:
+                                full_prompt_parts.append(str(part))
+                        else:
+                            full_prompt_parts.append(str(entry))
+                except Exception:
+                    pass
+            full_prompt_parts.append(prompt)
+            full_prompt = "\n\n".join([p for p in full_prompt_parts if p])
+
+            response = await asyncio.to_thread(model.generate_content, full_prompt)
+            text = getattr(response, "text", "") or ""
+            logger.info(f"✅ Text generated using {model_type}: {len(text)} characters")
+            return text
             
         except Exception as e:
             logger.error(f"❌ Text generation failed: {e}")
@@ -370,8 +362,11 @@ class VertexAIClient:
                     "timestamp": time.time()
                 })
             else:
-                result["prompt_index"] = i
-                processed_results.append(result)
+                processed_results.append({
+                    "status": "success",
+                    "text": result,
+                    "prompt_index": i
+                })
         
         logger.info(f"✅ Batch text generation completed: {len(processed_results)} prompts")
         return processed_results

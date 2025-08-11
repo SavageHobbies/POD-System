@@ -20,18 +20,13 @@ google-api-core>=2.11.0
 
 # Google Workspace APIs
 gspread>=6.1.4
-google-sheets-api>=0.1.0
-google-cloud-drive>=0.1.0
 
 # AI/ML Libraries
 google-generativeai>=0.7.2
 vertexai>=1.38.0
 langchain-google-vertexai>=0.1.0
 
-# MCP Integration
-mcp>=1.0.0
-google-mcp-tools>=1.0.0
-mcp-client>=0.5.0
+# MCP Integration (handled via HTTP; no PyPI deps required here)
 
 # Web Scraping and APIs
 aiohttp>=3.8.5
@@ -58,8 +53,6 @@ uvicorn[standard]>=0.24.0
 httpx>=0.25.0
 
 # External APIs
-printify-python>=1.0.0
-etsy-python>=2.0.0
 
 # Utilities
 pathlib2>=2.3.7

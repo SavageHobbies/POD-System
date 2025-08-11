@@ -7,7 +7,7 @@ import asyncio
 import json
 import time
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 from enum import Enum
@@ -44,7 +44,7 @@ class ABTestVariant:
     content_variations: Dict[str, Any]
     traffic_allocation: float  # 0.0 to 1.0
     is_control: bool = False
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     performance_metrics: Dict[str, float] = field(default_factory=dict)
 
 
@@ -64,8 +64,8 @@ class ABTestExperiment:
     minimum_sample_size: int = 1000
     traffic_split: str = "equal"  # equal, weighted, dynamic
     target_audience: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    last_updated: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -100,7 +100,7 @@ class OptimizationInsight:
     impact_score: float
     recommendations: List[str]
     data_sources: List[str]
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -122,9 +122,18 @@ class PerformanceOptimizationService:
     def __init__(self, config: HeliosConfig):
         self.config = config
         self.performance_monitor = PerformanceMonitor(config)
-        self.firestore_client = FirestoreClient()
-        self.redis_client = RedisCacheClient()
-        self.vertex_ai_client = VertexAIClient()
+        self.firestore_client = FirestoreClient(
+            project_id=config.google_cloud_project
+        ) if config.google_cloud_project else None
+        self.redis_client = RedisCacheClient(
+            host="localhost",
+            port=6379,
+            enable_cache=True
+        ) if config.enable_redis_caching else None
+        self.vertex_ai_client = VertexAIClient(
+            project_id=config.google_cloud_project,
+            location=config.google_cloud_location
+        ) if config.google_cloud_project else None
         
         # A/B testing configuration
         self.min_traffic_allocation = 0.1  # Minimum 10% traffic per variant

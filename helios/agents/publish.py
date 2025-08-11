@@ -25,12 +25,12 @@ async def plan_publication(
     if (
         not dry_run
         and config.allow_live_publishing
-        and config.google_sheets_tracking_id
+        and config.gsheet_id
         and config.service_account_dict()
     ):
         for l in listings[:10]:
             await log_row(
-                sheet_id=config.google_sheets_tracking_id,
+                sheet_id=config.gsheet_id,
                 creds_dict=config.service_account_dict() or {},
                 data={
                     "product_id": l.get("product_id"),

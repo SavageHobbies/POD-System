@@ -19,6 +19,7 @@ from ..agents.publisher_agent import PrintifyPublisherAgent
 from ..services.ethical_code import EthicalCodeService
 from ..services.copyright_review import CopyrightReviewService
 from ..services.external_apis.image_generation import ImageGenerationService
+from ..services.google_cloud.vertex_ai_client import VertexAIClient
 from ..config import HeliosConfig
 from ..utils.performance_monitor import PerformanceMonitor
 
@@ -66,7 +67,7 @@ class MarketingCopy:
     seo_keywords: List[str]
     call_to_action: str
     ethical_approval: bool = False
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -116,7 +117,12 @@ class ProductGenerationPipeline:
         )
         self.ethical_code_service = EthicalCodeService()
         self.copyright_service = CopyrightReviewService()
-        self.image_generation = ImageGenerationService()
+        self.image_generation = ImageGenerationService(
+            vertex_ai_client=VertexAIClient(
+                project_id=config.google_cloud_project,
+                location=config.google_cloud_location
+            )
+        )
         self.performance_monitor = PerformanceMonitor(config)
         
         # Pipeline configuration

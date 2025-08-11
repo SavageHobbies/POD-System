@@ -115,8 +115,6 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
 
     api_token = os.getenv("PRINTIFY_API_TOKEN", "").strip()
     shop_id = os.getenv("PRINTIFY_SHOP_ID", "").strip()
-    if not api_token or not shop_id:
-        raise RuntimeError("PRINTIFY_API_TOKEN and PRINTIFY_SHOP_ID must be set (see .env.example)")
 
     blueprint_id = os.getenv("BLUEPRINT_ID")
     provider_id = os.getenv("PRINT_PROVIDER_ID")
@@ -164,7 +162,7 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
     google_cloud_region = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
     google_cloud_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 
-    return HeliosConfig(
+    cfg = HeliosConfig(
         printify_api_token=api_token,
         printify_shop_id=shop_id,
         blueprint_id=parse_int(blueprint_id),
@@ -242,3 +240,10 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
         cache_ttl_printify_catalog=parse_int(os.getenv("CACHE_TTL_PRINTIFY_CATALOG")) or 86400,
         cache_ttl_api_responses=parse_int(os.getenv("CACHE_TTL_API_RESPONSES")) or 300,
     )
+    # In dry-run mode, allow missing Printify credentials
+    if cfg.dry_run and (not api_token or not shop_id):
+        cfg.printify_api_token = ""
+        cfg.printify_shop_id = ""
+    elif not api_token or not shop_id:
+        raise RuntimeError("PRINTIFY_API_TOKEN and PRINTIFY_SHOP_ID must be set (see .env.example)")
+    return cfg
