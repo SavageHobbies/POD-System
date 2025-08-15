@@ -41,6 +41,7 @@ class PrintifyPublisher:
             "User-Agent": "helios-pod-system"
         }
         self._blueprint_cache: Dict[Tuple[int, int], BlueprintProviderInfo] = {}
+        self._variants_cache: Dict[Tuple[int, int], List[Dict]] = {}  # Cache for variants
 
     @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
     def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,6 +123,29 @@ class PrintifyPublisher:
             clean_name = f"{clean_name}.png"
             
         return clean_name
+
+    def get_blueprint_variants(self, blueprint_id: int, provider_id: int) -> List[Dict[str, Any]]:
+        """Get variants for a blueprint/provider combination (IncomeStreamSurfer's approach)"""
+        cache_key = (blueprint_id, provider_id)
+        
+        # Check cache first
+        if cache_key in self._variants_cache:
+            return self._variants_cache[cache_key]
+        
+        # Fetch variants from API
+        path = f"/catalog/blueprints/{blueprint_id}/print_providers/{provider_id}/variants.json"
+        try:
+            response = self._get(path)
+            variants = response.get('variants', [])
+            
+            # Cache the results
+            self._variants_cache[cache_key] = variants
+            logger.info(f"✅ Found {len(variants)} variants for blueprint {blueprint_id} + provider {provider_id}")
+            
+            return variants
+        except Exception as e:
+            logger.error(f"❌ Failed to get variants for blueprint {blueprint_id} + provider {provider_id}: {e}")
+            return []
 
     def upload_design(self, file_path: Path) -> str:
         payload = self._upload(file_path)
@@ -471,19 +495,24 @@ class PrintifyPublisher:
         return product
 
     def _get_first_available_variant_id(self, blueprint_id: int, print_provider_id: int) -> Optional[int]:
-        """Fetch the first available variant id using the variants.json endpoint (bash parity)."""
+        """Fetch the first available variant id using the working IncomeStreamSurfer approach."""
         try:
-            data = self._get(f"/catalog/blueprints/{blueprint_id}/print_providers/{print_provider_id}/variants.json")
-            variants = data.get("variants", [])
+            # Use our new working method
+            variants = self.get_blueprint_variants(blueprint_id, print_provider_id)
             if not variants:
+                logger.warning(f"No variants found for blueprint {blueprint_id} + provider {print_provider_id}")
                 return None
-            # Prefer the first with available=True if present
-            for v in variants:
-                if v.get("available", True):
-                    return v.get("id")
-            # Fallback to the first
-            return variants[0].get("id")
-        except Exception:
+            
+            # Use first variant (IncomeStreamSurfer's approach)
+            first_variant = variants[0]
+            variant_id = first_variant.get("id")
+            
+            if variant_id:
+                logger.info(f"✅ Selected variant {variant_id}: {first_variant.get('title', 'Unknown')}")
+            
+            return variant_id
+        except Exception as e:
+            logger.error(f"❌ Failed to get variant ID for blueprint {blueprint_id} + provider {print_provider_id}: {e}")
             return None
 
     def create_product_minimal(
@@ -539,28 +568,17 @@ class PrintifyPublisher:
         colors: Optional[List[str]] = None,
         sizes: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Try robust variant resolution first; if it fails, fall back to minimal creation."""
-        try:
-            return self.create_product(
-                title=title,
-                description=description,
-                blueprint_id=blueprint_id,
-                print_provider_id=print_provider_id,
-                print_area_file_id=print_area_file_id,
-                variant_price_cents=variant_price_cents,
-                colors=colors,
-                sizes=sizes,
-            )
-        except Exception as e:
-            logger.warning(f"Enhanced product creation failed ({e}); falling back to minimal flow")
-            return self.create_product_minimal(
-                title=title,
-                description=description,
-                blueprint_id=blueprint_id,
-                print_provider_id=print_provider_id,
-                print_area_file_id=print_area_file_id,
-                variant_price_cents=variant_price_cents,
-            )
+        """Use the working minimal approach (IncomeStreamSurfer's method)."""
+        # Skip the enhanced method and go directly to the working minimal approach
+        logger.info(f"🛒 Using working minimal product creation approach")
+        return self.create_product_minimal(
+            title=title,
+            description=description,
+            blueprint_id=blueprint_id,
+            print_provider_id=print_provider_id,
+            print_area_file_id=print_area_file_id,
+            variant_price_cents=variant_price_cents,
+        )
 
     def publish_product(
         self,
