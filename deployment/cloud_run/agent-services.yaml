@@ -52,7 +52,7 @@ spec:
         - name: PRINTIFY_SHOP_ID
           value: "8542090"
         - name: GOOGLE_MCP_URL
-          value: "http://helios-mcp:8787"
+          value: "https://helios-mcp-658997361183.us-central1.run.app"
         - name: GOOGLE_MCP_AUTH_TOKEN
           valueFrom:
             secretKeyRef:
@@ -70,6 +70,25 @@ spec:
           value: "true"
         - name: ENABLE_ETHICAL_CODE
           value: "true"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: helios-secrets
+              key: gemini-api-key
+        - name: GEMINI_MODEL
+          value: "gemini-2.5-flash"
+        - name: DRY_RUN
+          value: "false"
+        - name: ALLOW_LIVE_PUBLISHING
+          value: "true"
+        - name: BLUEPRINT_ID
+          value: "145"
+        - name: PRINT_PROVIDER_ID
+          value: "29"
+        - name: ASSETS_BUCKET
+          value: "helios-product-assets-658997361183"
+        - name: GOOGLE_SERVICE_ACCOUNT_JSON
+          value: "/secrets/helios-sa.json"
         livenessProbe:
           httpGet:
             path: /health
