@@ -84,14 +84,18 @@ class PrintifyPublisher:
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
         }
+        
+        # Clean the filename to avoid special characters that cause API errors
+        clean_filename = self._clean_filename(file_path.name)
+        
         with open(file_path, "rb") as f:
             import base64
             b64 = base64.b64encode(f.read()).decode("utf-8")
             payload = {
-                "file_name": file_path.name,
+                "file_name": clean_filename,  # Use cleaned filename
                 "contents": b64,
             }
-            response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=120)
+            response = requests.post(url, headers=headers, json=payload, timeout=120)  # Use json= instead of data=
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
@@ -103,6 +107,21 @@ class PrintifyPublisher:
                 message = f"POST {url} failed with {response.status_code}: {body[:500]}"
                 raise requests.HTTPError(message, response=response) from e
             return response.json()
+    
+    def _clean_filename(self, filename: str) -> str:
+        """Clean filename to remove special characters that cause Printify API issues"""
+        import re
+        # Remove or replace problematic characters
+        clean_name = re.sub(r'[?:*<>|"\\]', '_', filename)  # Replace with underscore
+        clean_name = re.sub(r'[^\w\-_.]', '_', clean_name)  # Keep only alphanumeric, dash, underscore, dot
+        clean_name = re.sub(r'_+', '_', clean_name)  # Replace multiple underscores with single
+        clean_name = clean_name.strip('_')  # Remove leading/trailing underscores
+        
+        # Ensure it has .png extension
+        if not clean_name.lower().endswith('.png'):
+            clean_name = f"{clean_name}.png"
+            
+        return clean_name
 
     def upload_design(self, file_path: Path) -> str:
         payload = self._upload(file_path)

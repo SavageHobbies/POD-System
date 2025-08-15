@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Tuple
 from ..config import load_config
 from ..mcp_client import MCPClient
 from ..designer.text_art import create_text_design
+from ..services.google_cloud.vertex_ai_client import VertexAIClient
+from ..services.google_cloud.drive_client import GoogleDriveClient
 
 
 class CreativeDirector:
@@ -17,7 +19,43 @@ class CreativeDirector:
         self.fonts_dir = fonts_dir
         self.config = load_config()
         self.mcp_client = MCPClient.from_env(self.config.google_mcp_url, self.config.google_mcp_auth_token)
+        # Initialize Vertex AI client for real image generation when available
+        try:
+            if self.config.google_cloud_project:
+                self.vertex_ai_client = VertexAIClient(
+                    project_id=self.config.google_cloud_project,
+                    location=self.config.google_cloud_location
+                )
+            else:
+                self.vertex_ai_client = None
+        except Exception:
+            self.vertex_ai_client = None
+        # Initialize Google Drive client for optional asset upload
+        try:
+            if self.config.google_service_account_json and self.config.google_drive_folder_id:
+                self.drive_client = GoogleDriveClient(
+                    service_account_json=self.config.google_service_account_json,
+                    root_folder_id=self.config.google_drive_folder_id,
+                )
+            else:
+                self.drive_client = None
+        except Exception:
+            self.drive_client = None
         self.start_time = None
+
+    def _clean_filename(self, filename: str) -> str:
+        """Clean filename to remove special characters that cause API issues"""
+        import re
+        # Remove or replace problematic characters
+        clean_name = re.sub(r'[?:*<>|"\\]', '_', filename)  # Replace with underscore
+        clean_name = re.sub(r'[^\w\-_.]', '_', clean_name)  # Keep only alphanumeric, dash, underscore, dot
+        clean_name = re.sub(r'_+', '_', clean_name)  # Replace multiple underscores with single
+        clean_name = clean_name.strip('_').lower()  # Remove leading/trailing underscores and lowercase
+        
+        # Limit length and ensure it's reasonable
+        clean_name = clean_name[:50]  # Reasonable length limit
+        
+        return clean_name or "design"  # Fallback if empty
 
     async def run(self, trend: Dict[str, Any], products: List[Dict[str, Any]], num_designs_per_product: int = 3) -> Dict[str, Any]:
         """Generate creative designs using enhanced batch processing and psychological framework"""
@@ -384,20 +422,46 @@ class CreativeDirector:
         return fallback_designs
 
     async def _generate_single_design(self, concept: Dict[str, Any], product: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate a single design from concept and product"""
+        """Generate a single design from concept and product.
+
+        Prefers Vertex AI Imagen (IMAGEN_MODEL) if configured; falls back to text art.
+        """
         try:
             # Create enhanced design text incorporating psychological elements
             design_text = self._create_enhanced_design_text(concept, product)
-            
-            # Generate design file
-            design_path = create_text_design(
-                text=design_text,
-                out_dir=self.output_dir,
-                fonts_dir=self.fonts_dir,
-                canvas_size=(3000, 3000),  # Enhanced resolution for 300 DPI
-                bg_rgba=(255, 255, 255, 255),  # White background
-                text_rgb=(0, 0, 0)  # Black text
-            )
+            # Prefer real image generation if Vertex AI is available
+            design_path: Path
+            if getattr(self, "vertex_ai_client", None):
+                # Build an image prompt derived from concept fields
+                prompt_parts = [
+                    concept.get("name", ""),
+                    concept.get("description", ""),
+                    f"Style: {concept.get('style', '')}",
+                    f"Colors: {', '.join(concept.get('colors', [])[:5])}",
+                    f"Emotional appeal: {concept.get('emotional_appeal', '')}",
+                ]
+                image_prompt = "\n".join([p for p in prompt_parts if p]) or design_text
+                # Sanitize filename to avoid special characters that cause API issues
+                base_name = self._clean_filename(concept.get("name", "design") or "design")
+                out_path = self.output_dir / f"{base_name}.png"
+                result = await self.vertex_ai_client.generate_image(
+                    prompt=image_prompt,
+                    output_path=out_path,
+                    resolution="3000x3000",
+                    quality="high",
+                )
+                if result.get("status") != "success" or not out_path.exists():
+                    raise RuntimeError(result.get("error", "image_generation_failed"))
+                design_path = out_path
+            else:
+                raise RuntimeError("Vertex AI client not configured for image generation")
+
+            # Optional: upload to Google Drive if configured
+            try:
+                if getattr(self, "drive_client", None):
+                    await self.drive_client.upload_file(file_path=design_path)
+            except Exception:
+                pass
             
             return {
                 "concept_name": concept["name"],
@@ -409,7 +473,7 @@ class CreativeDirector:
                 "viral_potential": concept.get("viral_potential", ""),
                 "product_type": product.get("type", "apparel"),
                 "image_path": str(design_path),
-                "design_type": "enhanced_text_art",
+                "design_type": "imagen" if getattr(self, "vertex_ai_client", None) else "enhanced_text_art",
                 "resolution": "300 DPI",
                 "canvas_size": "3000x3000"
             }
