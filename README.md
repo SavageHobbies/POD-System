@@ -169,6 +169,12 @@ gcloud builds submit --config deployment/cloud_run/cloudbuild.yaml --project=hel
 3. **API Key Errors**: Verify all secrets are properly configured in Google Secret Manager
 4. **Build Failures**: Check disk space and use `--load` flag for local builds
 
+### **Cost Optimization:**
+1. **Regular Audits**: Use our [Google Cloud Audit Guide](GOOGLE_CLOUD_AUDIT_GUIDE.md) for comprehensive project reviews
+2. **GCR Cleanup**: Regularly clean up unused container images to reduce storage costs
+3. **API Management**: Disable unused APIs to reduce security surface and potential costs
+4. **Resource Monitoring**: Set up alerts for unusual spending patterns
+
 ### **Debug Commands:**
 ```bash
 # Check service status
@@ -186,6 +192,7 @@ python3.13 -c "import sys; sys.path.append('.'); from helios.orchestrator_api im
 - [AI Agent README](AI_AGENT_README.md) - Complete AI system documentation
 - [Backend Agent Task](BACKEND_AGENT_TASK.md) - Implementation details
 - [Deployment Guide](deployment/) - Complete deployment instructions
+- [Google Cloud Audit Guide](GOOGLE_CLOUD_AUDIT_GUIDE.md) - Comprehensive project review and cost optimization
 
 ## 🤝 **CONTRIBUTING**
 
