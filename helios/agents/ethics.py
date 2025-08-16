@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from typing import Literal, Dict, List, Any
 from ..config import load_config
-from ..mcp_client import MCPClient
+# MCPClient removed - using services version instead
 
 
 @dataclass

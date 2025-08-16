@@ -665,10 +665,11 @@ class CloudSchedulerClient:
                 "job_id": job_id
             }
     
-    async def close(self):
+    def close(self):
         """Close the Cloud Scheduler client"""
         try:
-            self.client.close()
+            if self.client:
+                self.client.close()
             logger.info("✅ Cloud Scheduler client closed")
             
         except Exception as e:

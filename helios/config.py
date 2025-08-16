@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 def split_csv(value: str | None) -> list[str]:
     """Split a comma-separated string into a list, handling None values"""
@@ -25,6 +25,7 @@ class HeliosConfig:
     print_provider_id: Optional[int] = None
     default_colors: list[str] = None
     default_sizes: list[str] = None
+    preferred_provider_name: Optional[str] = None
 
     # Behavior
     default_margin: float = 0.5
@@ -43,6 +44,7 @@ class HeliosConfig:
     google_cloud_project: Optional[str] = None
     google_service_account_json: Optional[str] = None
     google_drive_folder_id: Optional[str] = None
+    assets_bucket: Optional[str] = None
     
     # Google MCP Configuration
     google_mcp_url: Optional[str] = None
@@ -51,8 +53,8 @@ class HeliosConfig:
     # Google Sheets
     gsheet_id: Optional[str] = None
     
-    # Performance Thresholds
-    min_opportunity_score: float = 7.0
+    # Performance Thresholds  
+    min_opportunity_score: float = 5.0  # Lowered for enhanced early detection
     min_audience_confidence: float = 0.7  # 0-1 scale (70% confidence)
     min_profit_margin: float = 0.35
     max_execution_time: int = 300
@@ -62,6 +64,14 @@ class HeliosConfig:
     enable_batch_creation: bool = True
     enable_adaptive_learning: bool = True
     enable_auto_optimization: bool = True
+    
+    # Enhanced Trend Detection Settings (First-to-Market)
+    enable_early_trend_detection: bool = True
+    early_detection_velocity_threshold: float = 2.0
+    early_detection_freshness_threshold: float = 0.7
+    early_detection_viral_threshold: float = 0.6
+    early_detection_min_signals: int = 3
+    early_detection_max_trends: int = 20
     
     # Safety & Publishing
     allow_live_publishing: bool = False
@@ -108,10 +118,14 @@ class HeliosConfig:
 
 
 def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
-    # Load .env if present
+    # Load .env if present; prefer .env values over any pre-exported ones
     if env_path is None:
-        env_path = Path.cwd() / ".env"
-    load_dotenv(dotenv_path=env_path if env_path.exists() else None)
+        # Search from current working directory upward for a .env file
+        found = find_dotenv(usecwd=True)
+        if found:
+            load_dotenv(found, override=True)
+    else:
+        load_dotenv(dotenv_path=env_path if env_path.exists() else None, override=True)
 
     api_token = os.getenv("PRINTIFY_API_TOKEN", "").strip()
     shop_id = os.getenv("PRINTIFY_SHOP_ID", "").strip()
@@ -136,7 +150,7 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
             return default
         return value.lower() in ("true", "1", "yes", "on")
 
-    colors = split_csv(os.getenv("DEFAULT_COLOR", "white"))
+    colors = split_csv(os.getenv("DEFAULT_COLORS", "White,Black,Navy"))
     sizes = split_csv(os.getenv("DEFAULT_SIZES", "S,M,L,XL,2XL"))
 
     default_margin = parse_float(os.getenv("DEFAULT_MARGIN"), 0.5)
@@ -144,8 +158,8 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
     dry_run = parse_bool(os.getenv("DRY_RUN"), True)
 
     # Performance thresholds
-    min_opportunity_score = parse_float(os.getenv("MIN_OPPORTUNITY_SCORE"), 7.0)
-    min_audience_confidence = parse_float(os.getenv("MIN_AUDIENCE_CONFIDENCE"), 7.0) / 10.0  # Convert from 0-10 to 0-1 scale
+    min_opportunity_score = parse_float(os.getenv("MIN_OPPORTUNITY_SCORE"), 5.0)  # Lowered for better trend detection
+    min_audience_confidence = parse_float(os.getenv("MIN_AUDIENCE_CONFIDENCE"), 6.5) / 10.0  # Convert from 0-10 to 0-1 scale
     min_profit_margin = parse_float(os.getenv("MIN_PROFIT_MARGIN"), 0.35)
     max_execution_time = parse_int(os.getenv("MAX_EXECUTION_TIME")) or 300
 
@@ -161,6 +175,8 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
     # Google Cloud settings
     google_cloud_region = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
     google_cloud_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    assets_bucket = os.getenv("ASSETS_BUCKET") or os.getenv("CLOUD_STORAGE_BUCKET")
+    preferred_provider_name = os.getenv("PREFERRED_PROVIDER_NAME")
 
     cfg = HeliosConfig(
         printify_api_token=api_token,
@@ -169,6 +185,7 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
         print_provider_id=parse_int(provider_id),
         default_colors=colors,
         default_sizes=sizes,
+        preferred_provider_name=preferred_provider_name,
         default_margin=default_margin,
         default_draft=default_draft,
         dry_run=dry_run,
@@ -179,6 +196,7 @@ def load_config(env_path: Optional[Path] = None) -> HeliosConfig:
         google_cloud_project=os.getenv("GOOGLE_CLOUD_PROJECT"),
         google_service_account_json=os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
         google_drive_folder_id=os.getenv("GOOGLE_DRIVE_FOLDER_ID"),
+        assets_bucket=assets_bucket,
         
         # Google MCP
         google_mcp_url=os.getenv("GOOGLE_MCP_URL"),

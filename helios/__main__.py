@@ -1,4 +1,5 @@
-from .main import app
+from .orchestrator_api import app
 
 if __name__ == "__main__":
-    app()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)

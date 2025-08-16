@@ -117,8 +117,8 @@ class CompetitorIntelligenceService:
                 competitor_data["market_trends"] = trends_data.get("data", [])
             
             # Get social media mentions and sentiment
-            social_data = await self.mcp_client.get_social_trends(
-                query=product_category,
+            social_data = await self.mcp_client.scan_social_media(
+                keywords=[product_category],
                 platforms=["twitter", "reddit", "youtube"],
                 time_range="7d"
             )
@@ -127,7 +127,7 @@ class CompetitorIntelligenceService:
                 competitor_data["social_sentiment"] = social_data.get("data", [])
             
             # Get news analysis for market context
-            news_data = await self.mcp_client.get_news_analysis(
+            news_data = await self.mcp_client.analyze_news(
                 query=product_category,
                 time_range="30d"
             )
@@ -161,9 +161,22 @@ class CompetitorIntelligenceService:
         competitors = []
         
         try:
+            # Ensure data is in the correct format
+            if isinstance(trends_data, str):
+                trends_data = []
+            elif not isinstance(trends_data, list):
+                trends_data = []
+                
+            if isinstance(social_data, str):
+                social_data = []
+            elif not isinstance(social_data, list):
+                social_data = []
+            
             # Extract brand mentions from social data
             brand_mentions = set()
             for post in social_data:
+                if not isinstance(post, dict):
+                    continue
                 # Extract potential brand names (simplified)
                 text = post.get("text", "").lower()
                 # This is a simplified approach - in production, use NLP for better extraction
@@ -173,6 +186,8 @@ class CompetitorIntelligenceService:
             
             # Analyze trends data for competitor insights
             for trend in trends_data:
+                if not isinstance(trend, dict):
+                    continue
                 if trend.get("type") == "rising":
                     competitors.append({
                         "name": trend.get("query", "Unknown"),
@@ -355,7 +370,7 @@ class CompetitorIntelligenceService:
                 "status": "completed"
             }
             
-            await self.firestore_client.set_document(collection_name, document_id, document_data)
+            await self.firestore_client.create_document(collection_name, document_data, document_id)
             logger.info(f"Stored competitor analysis results for {product_category}")
             
         except Exception as e:
@@ -421,6 +436,12 @@ class CompetitorIntelligenceService:
                     if landscape.get("status") == "success":
                         # Extract trending insights
                         analysis_summary = landscape.get("analysis_summary", {})
+                        
+                        # Ensure analysis_summary is a dictionary
+                        if isinstance(analysis_summary, str):
+                            analysis_summary = {"analysis": analysis_summary}
+                        elif not isinstance(analysis_summary, dict):
+                            analysis_summary = {}
                         
                         # Create trending product entry
                         trending_product = {

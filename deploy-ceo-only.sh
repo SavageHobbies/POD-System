@@ -11,10 +11,10 @@ REGION="us-central1"
 echo "🚀 Deploying Helios CEO Orchestrator to existing cloud infrastructure..."
 
 # Load environment variables from your .env file
-if [ -f "../.env" ]; then
+if [ -f ".env" ]; then
     echo "📋 Loading environment variables from .env file..."
     set -a  # automatically export all variables
-    source ../.env
+    source .env
     set +a  # stop auto-exporting
     echo "✅ Environment variables loaded"
 else

@@ -1,0 +1,17 @@
+.env
+.env.*
+*.log
+__pycache__/
+.output/
+output/
+.cache/
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.swo
+**/.DS_Store
+docs/
+/Users/
+*.json

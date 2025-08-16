@@ -13,7 +13,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 import json
 from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, asdict
@@ -230,7 +230,7 @@ class PerformanceMonitor:
             topic_path = self.pubsub_client.topic_path(self.project_id, "helios-resource-alerts")
             
             alert_data = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "project_id": self.project_id,
                 "alert": alert
             }
@@ -270,7 +270,7 @@ class PerformanceMonitor:
         """Record a performance metric with labels (compatibility method)"""
         
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
         
         # Create a PerformanceMetric object
         metric = PerformanceMetric(
@@ -394,7 +394,7 @@ class PerformanceMonitor:
     ) -> List[PerformanceMetric]:
         """Get recent metrics within specified time window"""
         
-        cutoff_time = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         
         if operation_name:
             return [
@@ -430,7 +430,7 @@ class PerformanceMonitor:
             },
             "operation_breakdown": dict(self.operation_stats),
             "resource_baseline": self.resource_baseline,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         return summary
@@ -540,7 +540,7 @@ def monitor_performance(operation_name: str = None, context_provider: Callable =
                 metric = PerformanceMetric(
                     operation_name=op_name,
                     execution_time=execution_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     success=success,
                     error_message=error_message,
                     context=context,
@@ -593,7 +593,7 @@ def monitor_performance(operation_name: str = None, context_provider: Callable =
                 metric = PerformanceMetric(
                     operation_name=op_name,
                     execution_time=execution_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     success=success,
                     error_message=error_message,
                     context=context,

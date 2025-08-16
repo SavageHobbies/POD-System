@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
 import os
 from ..config import load_config
-from ..mcp_client import MCPClient
+from ..services.mcp_integration.mcp_client import GoogleMCPClient
 try:
     import google.generativeai as genai
 except Exception:
@@ -51,6 +51,7 @@ class TrendDecision:
     priority: Priority
     quality_gates: Dict[str, QualityGateResult]
     optimization_recommendations: List[str]
+    reasoning: str = ""  # Added missing reasoning attribute
 
 
 class HeliosCEO:
@@ -85,7 +86,7 @@ class HeliosCEO:
         }
         
         # Initialize Google MCP client if configured
-        self.mcp_client = MCPClient.from_env(cfg.google_mcp_url, cfg.google_mcp_auth_token)
+        self.mcp_client = GoogleMCPClient(cfg.google_mcp_url, cfg.google_mcp_auth_token) if cfg.google_mcp_url else None
         
         # Fallback to direct Gemini if MCP not available
         self.gemini_key = cfg.google_api_key
@@ -137,6 +138,19 @@ class HeliosCEO:
         
         execution_time_ms = int((time.time() - start_time) * 1000)
         
+        # Generate reasoning based on quality gate results
+        reasoning_parts = []
+        if approved:
+            reasoning_parts.append(f"Approved: All required quality gates passed.")
+        else:
+            failed_gates = [gate for gate, result in quality_gates.items() 
+                          if result.status == QualityGateStatus.FAILED and self.quality_gates.get(gate, {}).get("required")]
+            reasoning_parts.append(f"Rejected: Failed required gates: {', '.join(failed_gates)}")
+        
+        reasoning_parts.append(f"Opportunity score: {opportunity_score:.2f} (threshold: {self.min_opportunity_score})")
+        reasoning_parts.append(f"Confidence: {confidence_level:.2f} (threshold: {self.min_audience_confidence})")
+        reasoning = " ".join(reasoning_parts)
+        
         return TrendDecision(
             approved=approved,
             trend_name=trend_name,
@@ -150,7 +164,8 @@ class HeliosCEO:
             execution_time_ms=execution_time_ms,
             priority=priority,
             quality_gates=quality_gates,
-            optimization_recommendations=optimization_recommendations
+            optimization_recommendations=optimization_recommendations,
+            reasoning=reasoning
         )
 
     async def prepare_validation(self) -> Dict[str, Any]:

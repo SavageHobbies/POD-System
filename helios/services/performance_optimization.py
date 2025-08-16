@@ -121,10 +121,13 @@ class PerformanceOptimizationService:
     
     def __init__(self, config: HeliosConfig):
         self.config = config
-        self.performance_monitor = PerformanceMonitor(config)
-        self.firestore_client = FirestoreClient(
-            project_id=config.google_cloud_project
-        ) if config.google_cloud_project else None
+        self.performance_monitor = PerformanceMonitor(
+            project_id=config.google_cloud_project,
+            enable_cloud_monitoring=config.enable_cloud_monitoring
+        )
+        # Initialize Firestore client lazily to avoid startup failures
+        self._firestore_client = None
+        self._firestore_project_id = config.google_cloud_project
         self.redis_client = RedisCacheClient(
             host="localhost",
             port=6379,
@@ -148,6 +151,18 @@ class PerformanceOptimizationService:
         self.learning_models: Dict[str, LearningModel] = {}
         
         logger.info("✅ Performance Optimization Service initialized")
+    
+    @property
+    def firestore_client(self):
+        """Get Firestore client, initializing if needed"""
+        if self._firestore_client is None and self._firestore_project_id:
+            try:
+                self._firestore_client = FirestoreClient(project_id=self._firestore_project_id)
+                logger.info("✅ Firestore client initialized for Performance Optimization")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize Firestore client: {e}")
+                return None
+        return self._firestore_client
     
     async def create_experiment(self, experiment_config: Dict[str, Any]) -> ABTestExperiment:
         """Create a new A/B test experiment"""
@@ -187,10 +202,10 @@ class PerformanceOptimizationService:
             )
             
             # Store experiment in Firestore
-            await self.firestore_client.set_document(
-                collection="ab_test_experiments",
-                document_id=experiment_id,
-                data=experiment.__dict__
+            await self.firestore_client.create_document(
+                "ab_test_experiments",
+                experiment.__dict__,
+                experiment_id
             )
             
             # Store in memory
@@ -390,10 +405,10 @@ class PerformanceOptimizationService:
                 self.learning_models[model.model_id] = model
                 
                 # Store in Firestore
-                await self.firestore_client.set_document(
-                    collection="learning_models",
-                    document_id=model.model_id,
-                    data=model.__dict__
+                await self.firestore_client.create_document(
+                    "learning_models",
+                    model.__dict__,
+                    model.model_id
                 )
                 
                 logger.info(f"✅ Trained optimization model: {model.model_id} (accuracy: {model.accuracy_score:.3f})")

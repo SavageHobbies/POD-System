@@ -43,7 +43,7 @@ async def ready() -> Dict[str, Any]:
 async def run_once() -> Dict[str, Any]:
     if orchestrator is None:
         return {"status": "error", "message": "Orchestrator not initialized"}
-    result = orchestrator.run_complete_cycle()  # This is NOT async
+    result = await orchestrator.run_complete_cycle()  # Call the correct method
     return result
 
 

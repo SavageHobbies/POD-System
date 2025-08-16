@@ -29,8 +29,7 @@ check_env_vars() {
     required_vars=(
         "PRINTIFY_API_TOKEN"
         "GOOGLE_MCP_AUTH_TOKEN"
-        "VERTEX_AI_SA_KEY"
-        "GOOGLE_CLOUD_API_KEY"
+        "GEMINI_API_KEY"
     )
     
     missing_vars=()
@@ -47,10 +46,9 @@ check_env_vars() {
         done
         echo ""
         echo -e "${YELLOW}Please set these variables and try again:${NC}"
-        echo "export PRINTIFY_API_TOKEN='your-token'"
-        echo "export GOOGLE_MCP_AUTH_TOKEN='your-token'"
-        echo "export VERTEX_AI_SA_KEY='your-service-account-key'"
-        echo "export GOOGLE_CLOUD_API_KEY='your-api-key'"
+        echo "export PRINTIFY_API_TOKEN='your-printify-token'"
+        echo "export GOOGLE_MCP_AUTH_TOKEN='helios_mcp_token_2024'"
+        echo "export GEMINI_API_KEY='your-gemini-api-key'"
         exit 1
     fi
     

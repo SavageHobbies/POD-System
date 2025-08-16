@@ -4,7 +4,7 @@ import random
 import time
 from typing import Any, Dict, List, Tuple
 from ..config import load_config
-from ..mcp_client import MCPClient
+# MCPClient removed - using services version instead
 
 
 class ZeitgeistAgent:
@@ -16,7 +16,7 @@ class ZeitgeistAgent:
         self.start_time = None
 
     async def run(self, seed: str | None = None) -> Dict[str, Any]:
-        """Run enhanced trend analysis using Google MCP trend_seeker and Google Trends with psychological framework"""
+        """Run enhanced trend analysis preferring unified MCP trend_research, using seed as a hint."""
         
         self.start_time = time.time()
         
@@ -31,35 +31,18 @@ class ZeitgeistAgent:
             mcp_model_used = "none"
             ai_analysis = ""
             
-            # Try Google MCP trend_seeker first (Gemini 2.0 Flash for fast trend analysis)
+            # Prefer unified MCP trend_research (merges trends, social, news)
             if self.mcp_client:
                 try:
-                    mcp_response = await self.mcp_client.trend_seeker(seed, geo="US")
-                    
-                    if "response" in mcp_response and mcp_response["response"]:
-                        # Parse the AI response for trend analysis
-                        ai_analysis = mcp_response["response"]
-                        ai_keywords = self._extract_keywords_from_ai(ai_analysis)
-                        mcp_model_used = mcp_response.get("model", "gemini-2.0-flash-exp")
-                        print(f"MCP Trend Analysis for '{seed}': {len(ai_keywords)} keywords extracted")
+                    unified = await self.mcp_client.trend_research(geo="US", top_n=20, seed=seed)
+                    if unified and "data" in unified:
+                        # Use combined keywords as primary set
+                        google_trends_keywords = list(unified["data"].get("keywords", []))
+                        # Retain model used (from trends call) for reporting
+                        mcp_model_used = unified.get("model", "gemini-2.0-flash-exp")
+                        print(f"MCP trend_research: {len(google_trends_keywords)} keywords combined")
                 except Exception as e:
-                    print(f"MCP trend_seeker failed: {e}")
-                
-                # Get Google Trends data separately
-                try:
-                    trends_response = await self.mcp_client.google_trends_keywords(geo="US", top_n=10)
-                    if "data" in trends_response and "keywords" in trends_response["data"]:
-                        google_trends_keywords = trends_response["data"]["keywords"]
-                        print(f"Google Trends data: {len(google_trends_keywords)} trending keywords")
-                    elif "keywords" in trends_response:
-                        google_trends_keywords = trends_response["keywords"]
-                        print(f"Google Trends data: {len(google_trends_keywords)} trending keywords")
-                    else:
-                        print(f"Google Trends response format unexpected: {trends_response}")
-                        google_trends_keywords = []
-                except Exception as e:
-                    print(f"Google Trends via MCP failed: {e}")
-                    google_trends_keywords = []
+                    print(f"MCP trend_research failed: {e}")
             
             # Fallback to direct Google Trends if MCP not available
             if not google_trends_keywords and not self.mcp_client:

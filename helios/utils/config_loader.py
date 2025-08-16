@@ -39,7 +39,7 @@ class ConfigLoader:
         """Load configuration from environment variables"""
         
         config = {
-            # Google Cloud Configuration
+            # Google Cloud Configuration (Primary)
             "google_cloud": {
                 "project_id": os.getenv("GOOGLE_CLOUD_PROJECT"),
                 "region": os.getenv("GOOGLE_CLOUD_REGION", "us-central1"),
@@ -47,14 +47,29 @@ class ConfigLoader:
                 "service_account_json": os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
             },
             
-            # Google Services Configuration
+            # Firebase/Firestore Configuration (Primary Data Store)
+            "firebase": {
+                "project_id": os.getenv("GOOGLE_CLOUD_PROJECT"),
+                "database": os.getenv("FIRESTORE_DATABASE", "helios-data"),
+                "enabled": bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
+            },
+            
+            # Cloud Storage Configuration (Primary Asset Store)
+            "cloud_storage": {
+                "trend_analysis_bucket": os.getenv("TREND_ANALYSIS_BUCKET", "trend-analysis-data"),
+                "product_assets_bucket": os.getenv("PRODUCT_ASSETS_BUCKET", "helios-product-assets-658997361183"),
+                "enabled": bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
+            },
+            
+            # Google Services Configuration (Optional Fallbacks)
             "google_services": {
                 "sheets_tracking_id": os.getenv("GOOGLE_SHEETS_TRACKING_ID"),
                 "drive_folder_id": os.getenv("GOOGLE_DRIVE_FOLDER_ID"),
-                "gmail_enabled": os.getenv("GMAIL_ENABLED", "false").lower() == "true"
+                "gmail_enabled": os.getenv("GMAIL_ENABLED", "false").lower() == "true",
+                "enabled": bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") and os.getenv("GOOGLE_SHEETS_TRACKING_ID"))
             },
             
-            # MCP Configuration
+            # MCP Configuration (Required)
             "mcp": {
                 "server_url": os.getenv("GOOGLE_MCP_URL", "http://localhost:8080"),
                 "auth_token": os.getenv("GOOGLE_MCP_AUTH_TOKEN"),
@@ -80,7 +95,7 @@ class ConfigLoader:
             
             # Performance Configuration
             "performance": {
-                "min_opportunity_score": float(os.getenv("MIN_OPPORTUNITY_SCORE", "7.0")),
+                "min_opportunity_score": float(os.getenv("MIN_OPPORTUNITY_SCORE", "5.0")),
                 "min_audience_confidence": float(os.getenv("MIN_AUDIENCE_CONFIDENCE", "7.0")),
                 "min_profit_margin": float(os.getenv("MIN_PROFIT_MARGIN", "0.35")),
                 "max_execution_time": int(os.getenv("MAX_EXECUTION_TIME", "300")),

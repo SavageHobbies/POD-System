@@ -2,7 +2,7 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: helios-ceo
-  namespace: default
+  namespace: helios-pod-system
   annotations:
     run.googleapis.com/ingress: all
     run.googleapis.com/execution-environment: gen2
@@ -47,22 +47,19 @@ spec:
         - name: PRINTIFY_API_TOKEN
           valueFrom:
             secretKeyRef:
-              name: helios-secrets
-              key: printify-api-token
+              name: printify-api-token
+              key: latest
         - name: PRINTIFY_SHOP_ID
           value: "8542090"
         - name: GOOGLE_MCP_URL
           value: "https://helios-mcp-658997361183.us-central1.run.app"
         - name: GOOGLE_MCP_AUTH_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: helios-secrets
-              key: google-mcp-auth-token
+          value: "helios_mcp_token_2024"
         - name: GEMINI_API_KEY
           valueFrom:
             secretKeyRef:
-              name: helios-secrets
-              key: gemini-api-key
+              name: gemini-api-key
+              key: latest
         - name: GEMINI_MODEL
           value: "gemini-2.5-flash"
         - name: DRY_RUN
@@ -75,16 +72,17 @@ spec:
           value: "29"
         - name: ASSETS_BUCKET
           value: "helios-product-assets-658997361183"
+        - name: ENABLE_STRUCTURED_AI_ORCHESTRATOR
+          value: "true"
+        - name: AI_VALIDATION_STRICT_MODE
+          value: "true"
+        - name: MIN_OPPORTUNITY_SCORE
+          value: "5.0"
         livenessProbe:
           httpGet:
             path: /health
             port: 8080
           initialDelaySeconds: 20
           periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
+
       serviceAccountName: helios-automation-sa

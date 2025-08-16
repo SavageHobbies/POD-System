@@ -124,8 +124,15 @@ class CloudStorageClient:
             # Upload file
             blob.upload_from_filename(str(file_path))
             
-            # Generate public URL
+            # Generate URLs
             public_url = f"https://storage.googleapis.com/{self.bucket_name}/{destination_blob_name}"
+            signed_url = None
+            try:
+                signed_url = blob.generate_signed_url(
+                    expiration=timedelta(hours=24), version="v4", method="GET"
+                )
+            except Exception:
+                signed_url = None
             
             result = {
                 "status": "success",
@@ -135,7 +142,8 @@ class CloudStorageClient:
                 "size_bytes": file_path.stat().st_size,
                 "content_type": blob.content_type,
                 "metadata": blob.metadata,
-                "upload_timestamp": helios_metadata["upload_timestamp"]
+                "upload_timestamp": helios_metadata["upload_timestamp"],
+                "signed_url": signed_url
             }
             
             logger.info(f"✅ File uploaded successfully: {destination_blob_name}")
@@ -196,8 +204,15 @@ class CloudStorageClient:
             # Upload bytes
             blob.upload_from_string(data)
             
-            # Generate public URL
+            # Generate URLs
             public_url = f"https://storage.googleapis.com/{self.bucket_name}/{destination_blob_name}"
+            signed_url = None
+            try:
+                signed_url = blob.generate_signed_url(
+                    expiration=timedelta(hours=24), version="v4", method="GET"
+                )
+            except Exception:
+                signed_url = None
             
             result = {
                 "status": "success",
@@ -207,7 +222,8 @@ class CloudStorageClient:
                 "size_bytes": len(data),
                 "content_type": blob.content_type,
                 "metadata": blob.metadata,
-                "upload_timestamp": helios_metadata["upload_timestamp"]
+                "upload_timestamp": helios_metadata["upload_timestamp"],
+                "signed_url": signed_url
             }
             
             logger.info(f"✅ Bytes uploaded successfully: {destination_blob_name}")

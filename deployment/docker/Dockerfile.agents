@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     libssl-dev \
     curl \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -41,5 +41,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the application (will be overridden by specific service)
-CMD ["python", "-m", "helios.main"]
+# Run a lightweight FastAPI for health/entrypoints; respect PORT
+CMD ["sh", "-c", "uvicorn helios.server_agents:app --host 0.0.0.0 --port ${PORT:-8080}"]

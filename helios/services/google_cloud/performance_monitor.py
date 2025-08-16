@@ -43,7 +43,7 @@ class PerformanceAnalysis:
     efficiency_metrics: Dict[str, float]
 
 
-class PerformanceMonitor:
+class CloudPerformanceReporter:
     """Performance monitoring service for Helios"""
     
     def __init__(self, config: HeliosConfig):
@@ -531,9 +531,9 @@ class PerformanceMonitor:
 
 
 # Factory function for easy access
-def get_performance_monitor(config: HeliosConfig) -> PerformanceMonitor:
+def get_performance_monitor(config: HeliosConfig) -> CloudPerformanceReporter:
     """Get performance monitor instance"""
-    return PerformanceMonitor(config)
+    return CloudPerformanceReporter(config)
 
 
 # Convenience functions for common operations

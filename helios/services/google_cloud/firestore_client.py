@@ -1,6 +1,7 @@
 """
 Google Cloud Firestore Client for Helios Autonomous Store
 Handles database operations, caching, and performance optimization
+Enhanced with advanced query optimizations and descriptive ID support
 """
 
 import asyncio
@@ -12,8 +13,11 @@ from dataclasses import dataclass, asdict
 from loguru import logger
 
 from google.cloud import firestore
-from google.cloud.firestore_v1 import DocumentReference, CollectionReference
+from google.cloud.firestore_v1 import DocumentReference, CollectionReference, FieldFilter
 from google.api_core.exceptions import GoogleAPIError
+
+# Import optimized client for advanced operations
+from .firestore_optimizations import OptimizedFirestoreClient
 
 
 @dataclass
@@ -30,10 +34,11 @@ class FirestoreConfig:
 class FirestoreClient:
     """Google Cloud Firestore client for Helios Autonomous Store"""
     
-    def __init__(self, project_id: str, collection_prefix: str = "helios"):
+    def __init__(self, project_id: str, collection_prefix: str = "helios", database: str = "helios-data"):
         self.project_id = project_id
         self.collection_prefix = collection_prefix
-        self.client = firestore.Client(project=project_id)
+        self.database = database
+        self.client = firestore.Client(project=project_id, database=database)
         
         # Cache for frequently accessed data
         self._cache = {}
@@ -42,16 +47,69 @@ class FirestoreClient:
         
         # Collections
         self.collections = {
+            # Legacy logical names
             "trends": f"{collection_prefix}_trends",
             "products": f"{collection_prefix}_products",
             "audiences": f"{collection_prefix}_audiences",
             "workflows": f"{collection_prefix}_workflows",
             "analytics": f"{collection_prefix}_analytics",
             "quality_gates": f"{collection_prefix}_quality_gates",
-            "performance_metrics": f"{collection_prefix}_performance"
+            "performance_metrics": f"{collection_prefix}_performance",
+            # Canonical collection names per final overview
+            "trend_discoveries": "trend_discoveries",
+            "product_candidates": "product_candidates",
+            "helios_products": "helios_products",
+            "workflow_states": "workflow_states",
         }
         
+        # Initialize optimized client for advanced operations
+        self._optimized_client = None
+        
         logger.info(f"✅ Firestore client initialized for project: {project_id}")
+    
+    def get_optimized_client(self) -> OptimizedFirestoreClient:
+        """Get the optimized Firestore client for advanced operations"""
+        if self._optimized_client is None:
+            self._optimized_client = OptimizedFirestoreClient(self.project_id, self.database)
+        return self._optimized_client
+
+    # --------------- Optimized wrappers (delegating to optimized client) ---------------
+    async def get_products_by_trend_category(
+        self,
+        category: str,
+        status: Optional[str] = None,
+        limit: int = 50,
+        use_cache: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Optimized query wrapper for products by trend category"""
+        optimized = self.get_optimized_client()
+        return await optimized.get_products_by_trend_category(
+            category=category, status=status, limit=limit, use_cache=use_cache
+        )
+
+    async def get_trending_products_batch(
+        self,
+        trend_scores_min: float = 7.0,
+        days_back: int = 30,
+        batch_size: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Optimized batch query wrapper for trending products"""
+        optimized = self.get_optimized_client()
+        return await optimized.get_trending_products_batch(
+            trend_scores_min=trend_scores_min, days_back=days_back, batch_size=batch_size
+        )
+
+    async def get_competitor_analysis_by_keywords(
+        self,
+        keywords: List[str],
+        days_back: int = 7,
+        use_cache: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Optimized query wrapper for competitor analyses by keywords"""
+        optimized = self.get_optimized_client()
+        return await optimized.get_competitor_analysis_by_keywords(
+            keywords=keywords, days_back=days_back, use_cache=use_cache
+        )
     
     def _get_collection(self, collection_name: str) -> CollectionReference:
         """Get a Firestore collection reference"""
@@ -99,6 +157,19 @@ class FirestoreClient:
             })
             
             col_ref = self._get_collection(collection)
+            
+            # Auto-generate descriptive ID for products if not provided
+            if collection == "products" and not doc_id and data.get("product_name"):
+                import re
+                product_name = data.get("product_name")
+                # Create descriptive ID from product name
+                clean_name = re.sub(r'[^a-zA-Z0-9\s-]', '', product_name)
+                descriptive_id = re.sub(r'\s+', '-', clean_name).lower()
+                # Ensure it's not too long
+                if len(descriptive_id) > 1500:
+                    descriptive_id = descriptive_id[:1500]
+                doc_id = descriptive_id
+                data["descriptive_id"] = descriptive_id
             
             if doc_id:
                 doc_ref = col_ref.document(doc_id)
@@ -253,24 +324,13 @@ class FirestoreClient:
         """
         try:
             col_ref = self._get_collection(collection)
-            
-            if operator == "==":
-                query = col_ref.where(field, "==", value)
-            elif operator == ">":
-                query = col_ref.where(field, ">", value)
-            elif operator == ">=":
-                query = col_ref.where(field, ">=", value)
-            elif operator == "<":
-                query = col_ref.where(field, "<", value)
-            elif operator == "<=":
-                query = col_ref.where(field, "<=", value)
-            elif operator == "in":
-                query = col_ref.where(field, "in", value)
-            elif operator == "array_contains":
-                query = col_ref.where(field, "array_contains", value)
-            else:
+
+            # Use modern filter API to avoid deprecation warnings and enable composite index usage
+            supported_ops = {"==", ">", ">=", "<", "<=", "in", "array_contains", "array_contains_any"}
+            if operator not in supported_ops:
                 raise ValueError(f"Unsupported operator: {operator}")
-            
+
+            query = col_ref.where(filter=FieldFilter(field, operator, value))
             query = query.limit(limit)
             docs = query.stream()
             
@@ -350,6 +410,55 @@ class FirestoreClient:
             
         except GoogleAPIError as e:
             logger.error(f"❌ Batch write failed: {e}")
+            raise
+
+    # --------------- Idempotency helpers ---------------
+    async def find_existing_product(
+        self,
+        *,
+        image_sha256: str,
+        blueprint_id: int,
+        print_provider_id: int,
+        limit: int = 1,
+    ) -> Optional[Dict[str, Any]]:
+        """Find existing product in helios_products by idempotency tuple.
+
+        Uses composite index on (image_sha256, blueprint_id, print_provider_id).
+        """
+        try:
+            col_ref = self._get_collection("helios_products")
+            query = (
+                col_ref.where(filter=FieldFilter("image_sha256", "==", image_sha256))
+                .where(filter=FieldFilter("blueprint_id", "==", int(blueprint_id)))
+                .where(filter=FieldFilter("print_provider_id", "==", int(print_provider_id)))
+                .limit(limit)
+            )
+            docs = list(query.stream())
+            if docs:
+                data = docs[0].to_dict()
+                data["id"] = docs[0].id
+                return data
+            return None
+        except Exception as e:
+            logger.error(f"❌ Idempotency lookup failed: {e}")
+            return None
+
+    async def upsert_helios_product(
+        self,
+        *,
+        document_id: Optional[str],
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Create or update a document in helios_products."""
+        try:
+            col = "helios_products"
+            if document_id:
+                await self.update_document(col, document_id, data, merge=True)
+                return {"id": document_id, "collection": col}
+            else:
+                return await self.create_document(col, data)
+        except Exception as e:
+            logger.error(f"❌ Upsert helios_product failed: {e}")
             raise
     
     # Helios-specific methods for trend and product management

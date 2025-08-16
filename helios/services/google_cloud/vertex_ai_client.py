@@ -18,6 +18,15 @@ from google.auth import default
 from google.auth.exceptions import DefaultCredentialsError
 
 from loguru import logger
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
+try:
+    # Imagen 3 (preview) image generation
+    from vertexai.preview.vision_models import ImageGenerationModel
+except Exception:
+    ImageGenerationModel = None
 
 
 @dataclass
@@ -38,85 +47,69 @@ class VertexAIClient:
     """
     
     def __init__(self, project_id: str = None, location: str = "us-central1"):
+        # Keep project/location for Sheets/Drive; not required for Gemini direct API
         self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = location
-        self.initialized = False
-        
-        # Model configurations based on requirements
+        self.initialized = True
+
+        # Configure direct Gemini API if available
+        api_key = os.getenv("GEMINI_API_KEY")
+        if genai and api_key:
+            try:
+                genai.configure(api_key=api_key)
+            except Exception as e:
+                logger.warning(f"Gemini configure failed: {e}")
+
+        # Model configurations (names come from env or sensible defaults)
         self.models = {
             "gemini_pro": GeminiModelConfig(
-                model_name="gemini-1.5-pro",
+                model_name=os.getenv("GEMINI_PRO_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash")),
                 max_tokens=8192,
                 temperature=0.7,
                 use_cases=["Complex analysis", "Strategy formulation"]
             ),
             "gemini_flash": GeminiModelConfig(
-                model_name="gemini-1.5-flash",
+                model_name=os.getenv("GEMINI_FLASH_MODEL", "gemini-2.0-flash-lite-001"),
                 max_tokens=8192,
                 temperature=0.8,
                 use_cases=["Rapid processing", "Copy generation"]
             ),
             "gemini_ultra": GeminiModelConfig(
-                model_name="gemini-1.0-ultra",
+                model_name=os.getenv("GEMINI_ULTRA_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash")),
                 max_tokens=32768,
                 temperature=0.5,
                 use_cases=["CEO orchestration", "Critical decisions"]
             )
         }
-        
-        # Image generation model
-        self.image_model = "imagen-3"
-        
-        self._initialize_client()
+
+        # Image model (prefer Imagen 3 if configured)
+        self.image_model = os.getenv("IMAGEN_MODEL", os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-001"))
+        try:
+            if self.project_id and self.location:
+                vertexai.init(project=self.project_id, location=self.location)
+        except Exception as e:
+            logger.warning(f"Vertex AI init failed: {e}")
     
     def _initialize_client(self):
-        """Initialize the Vertex AI client"""
-        try:
-            # Set environment variables
-            os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
-            os.environ["GOOGLE_CLOUD_LOCATION"] = self.location
-            
-            # Initialize Vertex AI
-            vertexai.init(project=self.project_id, location=self.location)
-            
-            # Initialize AI Platform
-            aiplatform.init(project=self.project_id, location=self.location)
-            
-            self.initialized = True
-            logger.info(f"✅ Vertex AI client initialized for project: {self.project_id}")
-            
-        except DefaultCredentialsError:
-            logger.error("❌ Google Cloud credentials not found. Please set up authentication.")
-            raise
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize Vertex AI client: {e}")
-            raise
+        # No-op for direct Gemini API
+        self.initialized = True
     
-    def get_model(self, model_type: str = "gemini_pro") -> GenerativeModel:
-        """Get a Gemini model instance"""
-        if not self.initialized:
-            raise RuntimeError("Vertex AI client not initialized")
-        
+    def get_model(self, model_type: str = "gemini_pro"):
         if model_type not in self.models:
             raise ValueError(f"Unknown model type: {model_type}")
-        
         config = self.models[model_type]
-        return GenerativeModel(
-            model_name=config.model_name,
-            generation_config={
-                "max_output_tokens": config.max_tokens,
-                "temperature": config.temperature,
-                "top_p": config.top_p,
-                "top_k": config.top_k
-            }
-        )
+        if not genai:
+            raise RuntimeError("google-generativeai not available")
+        return genai.GenerativeModel(config.model_name)
     
     async def generate_text(
         self,
         prompt: str,
         model_type: str = "gemini_pro",
         system_prompt: str = None,
-        context: List[Dict] = None
+        context: List[Dict] = None,
+        model: Optional[str] = None,
+        **kwargs: Any
     ) -> str:
         """
         Generate text using Gemini AI
@@ -131,7 +124,15 @@ class VertexAIClient:
             Dictionary containing generated text and metadata
         """
         try:
-            model = self.get_model(model_type)
+            # Allow callers to pass explicit model name via `model`
+            if model:
+                # If a full gemini model name is provided, use it directly
+                try:
+                    text_model = genai.GenerativeModel(model)
+                except Exception:
+                    text_model = self.get_model(model_type)
+            else:
+                text_model = self.get_model(model_type)
             # Concatenate system/context into a single prompt for simplicity
             full_prompt_parts: List[str] = []
             if system_prompt:
@@ -152,19 +153,14 @@ class VertexAIClient:
             full_prompt_parts.append(prompt)
             full_prompt = "\n\n".join([p for p in full_prompt_parts if p])
 
-            response = await asyncio.to_thread(model.generate_content, full_prompt)
+            response = await asyncio.to_thread(text_model.generate_content, full_prompt)
             text = getattr(response, "text", "") or ""
             logger.info(f"✅ Text generated using {model_type}: {len(text)} characters")
             return text
             
         except Exception as e:
             logger.error(f"❌ Text generation failed: {e}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "model_used": model_type,
-                "timestamp": time.time()
-            }
+            return ""
     
     async def analyze_trend(
         self,
@@ -292,42 +288,62 @@ class VertexAIClient:
         quality: str = "high"
     ) -> Dict[str, Any]:
         """
-        Generate image using Vertex AI Imagen
-        
-        Args:
-            prompt: Text description for image generation
-            output_path: Path to save the generated image
-            resolution: Image resolution
-            quality: Image quality setting
-            
-        Returns:
-            Image generation results
+        Generate image using Vertex AI Imagen (if available). Saves PNG to output_path.
         """
         try:
-            # Note: Image generation with Imagen requires specific setup
-            # This is a placeholder for the actual implementation
             logger.info(f"🖼️ Image generation requested: {prompt}")
-            
-            # For now, return a placeholder
-            result = {
-                "status": "not_implemented",
-                "message": "Image generation with Imagen requires additional setup",
-                "prompt": prompt,
+            width, height = (int(x) for x in resolution.lower().split("x"))
+            if ImageGenerationModel is None:
+                raise RuntimeError("Imagen model not available in this environment")
+
+            model = ImageGenerationModel.from_pretrained(self.image_model)
+            raw = await asyncio.to_thread(
+                model.generate_images,
+                prompt=prompt,
+                number_of_images=1,
+                # Imagen 3 preview uses aspect_ratio instead of explicit size
+                aspect_ratio="1:1",
+                safety_filter_level="block_moderate_and_above",
+            )
+            # Normalize output across SDK variants
+            images = []
+            if isinstance(raw, list):
+                images = raw
+            elif hasattr(raw, "generated_images"):
+                images = getattr(raw, "generated_images") or []
+            elif hasattr(raw, "images"):
+                images = getattr(raw, "images") or []
+
+            if not images:
+                raise RuntimeError("No image returned from Imagen (empty result)")
+            img = images[0]
+            img_bytes = None
+            for attr in ("_image_bytes", "image_bytes", "bytes"):
+                val = getattr(img, attr, None)
+                if val:
+                    img_bytes = val
+                    break
+            if img_bytes is None and hasattr(img, "as_bytes"):
+                try:
+                    img_bytes = img.as_bytes()
+                except Exception:
+                    pass
+            if img_bytes is None:
+                raise RuntimeError("Imagen returned no bytes for image")
+            out_path = Path(output_path) if output_path else Path.cwd() / "output" / f"imagen_{int(time.time())}.png"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(out_path, "wb") as f:
+                f.write(img_bytes)
+            return {
+                "status": "success",
+                "output_path": str(out_path),
                 "resolution": resolution,
                 "quality": quality,
-                "timestamp": time.time()
+                "image_model": self.image_model,
             }
-            
-            logger.warning("⚠️ Image generation not yet implemented - requires Imagen API access")
-            return result
-            
         except Exception as e:
             logger.error(f"❌ Image generation failed: {e}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "timestamp": time.time()
-            }
+            return {"status": "error", "error": str(e)}
     
     async def batch_generate_text(
         self,
@@ -388,6 +404,14 @@ class VertexAIClient:
             "project_id": self.project_id,
             "location": self.location
         }
+    
+    async def close(self):
+        """Close the Vertex AI client and clean up resources"""
+        try:
+            # Close any internal clients if they exist
+            logger.info("✅ Vertex AI client closed")
+        except Exception as e:
+            logger.error(f"❌ Error closing Vertex AI client: {e}")
 
 
 # Convenience functions for common operations

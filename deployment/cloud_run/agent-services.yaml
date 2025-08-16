@@ -48,7 +48,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: helios-secrets
-              key: printify-api-token
+              key: latest
         - name: PRINTIFY_SHOP_ID
           value: "8542090"
         - name: GOOGLE_MCP_URL
@@ -57,7 +57,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: helios-secrets
-              key: google-mcp-auth-token
+              key: latest
         - name: VERTEX_AI_PROJECT_ID
           value: "helios-pod-system"
         - name: VERTEX_AI_LOCATION
@@ -74,7 +74,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: helios-secrets
-              key: gemini-api-key
+              key: latest
         - name: GEMINI_MODEL
           value: "gemini-2.5-flash"
         - name: DRY_RUN
@@ -87,8 +87,13 @@ spec:
           value: "29"
         - name: ASSETS_BUCKET
           value: "helios-product-assets-658997361183"
-        - name: GOOGLE_SERVICE_ACCOUNT_JSON
-          value: "/secrets/helios-sa.json"
+        # Service account is configured via IAM binding
+        - name: ENABLE_STRUCTURED_AI_ORCHESTRATOR
+          value: "true"
+        - name: AI_VALIDATION_STRICT_MODE
+          value: "true"
+        - name: MIN_OPPORTUNITY_SCORE
+          value: "5.0"
         livenessProbe:
           httpGet:
             path: /health

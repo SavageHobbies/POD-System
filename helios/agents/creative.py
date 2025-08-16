@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from ..config import load_config
-from ..mcp_client import MCPClient
+# MCPClient removed - using services version instead
 from ..designer.text_art import create_text_design
 from ..services.google_cloud.vertex_ai_client import VertexAIClient
 from ..services.google_cloud.drive_client import GoogleDriveClient
