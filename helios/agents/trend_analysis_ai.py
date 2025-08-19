@@ -121,7 +121,7 @@ class TrendAnalysisAI:
         )
         
         self.google_trends = GoogleTrendsClient()
-        self.sheets_client = GoogleSheetsClient(config.gsheet_id) if config.gsheet_id else None
+        self.sheets_client = GoogleSheetsClient(config.google_service_account_json, config.gsheet_id) if config.gsheet_id else None
         self.drive_client = GoogleDriveClient(config.google_drive_folder_id) if config.google_drive_folder_id else None
         
         # Performance monitoring
