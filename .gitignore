@@ -206,3 +206,4 @@ output/*.jpeg
 *.generated.jpg
 *.generated.jpeg
 .env
+secrets/
